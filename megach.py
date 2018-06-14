@@ -34,7 +34,7 @@ Megamaster12 changelog
 ################################################################
 # License
 ################################################################
-# Copyright 2011 Lumirayz
+# Copyright 2011 Megamaster12
 # This program is distributed under the terms of the GNU GPL.
 """
 ################################################################
@@ -56,6 +56,8 @@ import socket
 import sys
 import threading
 import time
+import urllib.parse
+import urllib.request
 
 ################################################################
 # Depuración
@@ -136,7 +138,7 @@ def getServer(group: str) -> str:
     sn = 0
     for wgt in tsweights:
         cumfreq += float(wgt[1]) / maxnum
-        if (num <= cumfreq):
+        if num <= cumfreq:
             sn = int(wgt[0])
             break
     return "s" + str(sn) + ".chatango.com"
@@ -248,6 +250,7 @@ class WS:
     TEXT = 1
     BINARY = 2
     CLOSE = 8
+    PING = 9
 
     @staticmethod
     def encode(payload: object) -> bytes:
@@ -256,13 +259,13 @@ class WS:
         :param payload:El string o arreglo de bytes a encodear para websocket
         :return: El arreglo de Bytes enmascarado
         """
-        opcode = WS.CONTINUATION
+        opcode = WS.TEXT
         pl = payload
         frame = bytearray()
         mask = os.urandom(4)
         if isinstance(pl, str):
             pl = pl.encode("utf-8", "replace")
-        frame.append(opcode)
+        frame.append(opcode | 128)
         int()
         if len(pl) <= 125:
             frame.append(len(pl) | 128)
@@ -322,7 +325,6 @@ class WS:
                 version, _ = headers[0].split(" ", 1)
                 headers = headers[1:]
             headers = {y.lower(): z for y, z in map(lambda x: x.split(": ", 1), headers)}
-
         if version:
             version = version.split("/")[1]
             version = tuple(int(x) for x in version.split("."))
@@ -330,7 +332,7 @@ class WS:
                 return False
             if version[1] < 1:
                 return False
-        if "upgrade" not in headers or headers["upgrade"] != "websocket":
+        if "upgrade" not in headers or headers["upgrade"].lower() != "websocket":
             return False
         elif "connection" not in headers or headers["connection"].lower() != "upgrade":
             return False
@@ -354,6 +356,7 @@ class WS:
             payload_length += int.from_bytes(buffer[2:4], "big")
         elif (buffer[1] & 127) == 127:
             payload_length += int.from_bytes(buffer[2:10], "big")
+        # noinspection PyCallByClass
         return WS.FrameInfo(bool(buffer[0] & 128), buffer[0] & 15, bool(buffer[1] & 128), payload_length)
 
     @staticmethod
@@ -403,13 +406,13 @@ def User(name: str, **kwargs):
     return user
 
 
-class _User():
+class _User:
     # TODO revisar
     def __init__(self, name, **kwargs):
         self._showname = name
         self._name = name.lower()
         self._sids = dict()
-        self._msgs = list()
+        self._msgs = list()  # TODO Mantener historial reciente de un usuario
         self._nameColor = '000'
         self._fontSize = 12
         self._fontFace = '0'
@@ -474,7 +477,7 @@ class _User():
         self._sids[room].add(sid)
 
 
-class Message:
+class Message(WS):
     """
     Clase que representa un mensaje en una sala o en privado
     TODO revisar
@@ -504,6 +507,11 @@ class Message:
             if val is None: continue
             setattr(self, "_" + attr, val)
 
+    def __repr__(self):
+        return self.body
+
+    def __str__(self):
+        return '[%s][%s]:%s' % (self.room.name, self.user.name, self.body)
     ####
     # Properties
     ####
@@ -574,28 +582,264 @@ class Message:
     ####
     def attach(self, room, msgid):
         """
+        TODO esto debería llamar a un método incrustado en room
         Attach the Message to a message id.
         @type msgid: str
         @param msgid: message id
-        :param room:
+        :param room: Sala a la que se agregará
         """
         if self._msgid is None:
             self._room = room
             self._msgid = msgid
-            self._room._msgs[msgid] = self
+            self._room.msgs[msgid] = self
 
     def detach(self):
         """Detach the Message."""
-        if self._msgid is not None and self._msgid in self._room._msgs:
-            del self._room._msgs[self._msgid]
+        if self._msgid is not None and self._msgid in self._room.msgs:
+            del self._room.msgs[self._msgid]
             self._msgid = None
 
     def delete(self):
+        """Borrar el mensaje de la sala (Si es mod)"""
         self._room.deleteMessage(self)
 
 
+class PM:
+    """
+    Maneja una conexión con los mensajes privados de chatango
+    """
+
+    def __init__(self, mgr, anon: bool = False):
+        """
+        :param mgr: El dueño de esta instancia
+        :param anon: Indicar si entrará al PM como anon o no
+        """
+        self._auth_re = re.compile(
+            r"auth\.chatango\.com ?= ?([^;]*)", re.IGNORECASE
+        )
+        self._blocklist = set()
+        self._connected = False
+        self._contacts = set()
+        self._currentname = None
+        self._firstCommand = True
+        self._name = 'PM'
+        self._pingInterval = 90  # Max iddle time is 300
+        self._port = 8080  # TODO
+        self._rbuf = b''
+        self._sock = None  # TODO
+        self._server = 'i0.chatango.com'  # TODO
+        self._status = dict()
+        self._wbuf = b''
+        self._wlockbuf = b""
+        self._wlock = False
+        self.connectattempts = 0
+        self.mgr = mgr
+        self.statusmp = ""
+        if self.mgr:
+            self.connect(self.mgr.name)
+
+    def getConnections(self):
+        return [self]
+
+    # Propiedades
+    def _getName(self):
+        return self._name
+
+    def _getSock(self):
+        return self._sock
+
+    def _getStatus(self):
+        return self._status
+
+    name = property(_getName)
+    sock = property(_getSock)
+    status = property(_getStatus)
+
+    def _auth(self):
+        # TODO
+        # self._auid = self._getAuth(self.mgr.name, self.mgr.password)
+        # if self._auid == None:
+        #    self._sock.close()
+        #    self._callEvent("onLoginFail")
+        #    self._sock = None
+        #    return False
+        # self._sendCommand("tlogin", self._auid,"2")
+        # self._firstCommand = True
+        # self._sendCommand("tlogin",
+        #                  "828C1900696B6171538454F7872BAC10DBFA62933E528A0E09CCF6E52F3166D10955BBCD61BF4CA1",
+        #                  "2")
+        # self._setWriteLock(True)
+        return True
+
+    def _callEvent(self, evt, *args, **kw):
+        getattr(self.mgr, evt)(self, *args, **kw)
+        self.mgr.onEventCalled(self, evt, *args, **kw)
+
+    def connect(self, name):
+        # TODO
+        self._connect(name)
+
+    def _connect(self, name):  # TODO
+        import websocket
+        # if (this.kickedoff)
+        # return
+        # URL = "ws://{}:{}".format(self.mgr.PMHost, 8080)
+        self._wbuf = b""
+        self._sock = socket.socket()
+        self._statuspm = "bc_connecting"
+        # websocket.create_connection(URL ,origin="http://st.chatango.com")
+        self._sock.connect(("c1.chatango.com", self._port))  # ,origin="http://st.chatango.com")
+        self._statuspm = "bc_socket_connected"
+        self._sock.setblocking(False)
+        self._wbuf = (b"GET / HTTP/1.1\r\n"
+                      b"Host: " + "c1.chatango.com:{}".format(self._port).encode() + b"\r\n"
+                                                                                     b"Origin: http://st.chatango.com\r\n"
+                                                                                     b"Connection: Upgrade\r\n"
+                                                                                     b"Upgrade: websocket\r\n"
+                                                                                     b"Sec-WebSocket-Key: uJkrw+8KgVIZOr2PVaz1Yg==\r\n"
+                                                                                     b"Sec-WebSocket-Version: 13\r\n"
+                                                                                     b"\r\n")
+        self.statusmp = "connecting"
+        self._firstCommand = True
+        self._setWriteLock(True)
+        # self._persons[name]._sock=sock
+        # if not self._persons[name]._auth()
+        self._pingTask = self.mgr.setInterval(self._pingInterval, self.ping)
+        # self._sock = socket.socket()
+        # self._sock.connect((self._mgr._PMHost, self._mgr._PMPort))
+        # self._sock.setblocking(False)
+
+        if not self._auth(): return
+        # self._pingTask = self.mgr.setInterval(self._mgr._pingDelay, self.ping)
+        self._connected = True
+        # self.mgr._running = True
+
+    def _do_handshake(self, uname=None, password=None):
+        """Autenticar.
+        Logearse como uname con password"""
+        # self.reset()  # TODO
+        # self.nomore = False
+        # self._write(b'version:4:1\x00')
+        __reg2 = ["tlogin", uname or self.mgr.name]  # TODO comando
+        self._currentname = uname or self.mgr.name
+        if not uname and self.mgr.password:
+            __reg2.append(self.mgr.password)
+        else:
+            __reg2.append(password or '')
+        # self._sendCommand(*__reg2)
+        self._write(":".join(__reg2).encode(errors="replace"))
+
+    def _getAuth(self, name, password):
+        """
+        Request an auid using name and password.
+        @type name: str
+        @param name: name
+        @type password: str
+        @param password: password
+        @rtype: str
+        @return: auid
+        """
+        data = urllib.parse.urlencode({
+            "user_id": name,
+            "password": password,
+            "storecookie": "on",
+            "checkerrors": "yes",
+            "origin": "st.chatango.com"
+        }).encode()
+        try:
+            resp = urllib.request.urlopen("http://chatango.com/login", data)
+            headers = resp.headers
+        except:
+            return None
+        for header, value in headers.items():
+            if header.lower() == "set-cookie":
+                m = self._auth_re.search(value)
+                if m:
+                    auth = m.group(1)
+                    if auth == "":
+                        return None
+                    return auth
+        return None
+
+    def login(self):
+        # TODO el 2 es la versión del cliente
+        __reg2 = ["tlogin", self._getAuth(self.mgr.name, self.mgr.password), "2"]
+        self._sendCommand(*__reg2)
+
+    def on_tagserver_data(self, data):
+        """Al recibir datos del servidor"""
+        self._rbuf += data
+        if self.statusmp == "connecting" and b'\r\n' * 2 in data:
+            headers, self._rbuf = self._rbuf.split(b"\r\n" * 2)
+            clave = WS.checkHeaders(headers)
+            if clave != 'Vm7scDIsH+hcgn948Ftni+ulSAs=':
+                pass  # TODO
+            else:
+                self.statusmp = "connected"
+                self._setWriteLock(False)
+                self.login()  # self.mgr.name,self.mgr.password)  # auth
+
+        else:
+            r = WS.checkFrame(self._rbuf)
+            while r:
+                frame = self._rbuf[:r]
+                self._rbuf = self._rbuf[r:]
+                info = WS.frameInfo(frame)  # TODO
+                payload = WS.getPayload(frame)
+                if info.opcode == WS.CLOSE:  # server wants to close connection
+                    pass  # self.reconnect()
+                elif info.opcode == WS.TEXT:  # actual data
+                    self._process(payload)
+                elif debug:
+                    print("unhandled frame:", "with payload", payload, file=sys.stderr)
+                r = WS.checkFrame(self._rbuf)
+
+    def ping(self):
+        self._sendCommand("")
+        self._callEvent("onPMPing")
+
+    def _process(self, data):
+        """
+        Process a command string.
+        @type data: str
+        @param data: the command string
+        """
+        self._callEvent("onRaw", data)
+        data = data.split(":")
+        cmd, args = data[0], data[1:]
+        func = "_rcmd_" + cmd
+        if hasattr(self, func):
+            getattr(self, func)(args)
+        else:
+            if debug and data[0] not in ["\r\n", "", "\r\n\x00"]:
+                print("UNKNOWN DATA IN MP: " + str(data))
+
+    def _sendCommand(self, *args):
+        if self._firstCommand:
+            terminator = "\x00"
+            self._firstCommand = False
+        else:
+            terminator = "\r\n\x00"
+        cmd = ":".join(args) + terminator
+        self._write(WS.encode(cmd))
+
+    def _setWriteLock(self, args):
+        self._wlock = args
+        if not self._wlock:
+            self._write(self._wlockbuf)
+            self._wlockbuf = b''
+
+    def _write(self, data: bytes):
+        if not self._wlock:
+            self._wbuf += data
+        else:
+            self._wlockbuf += data
+
+
 class Room:
+    """"""
     def __init__(self, name, mgr):
+        self.participants_number = list()
         self.imsgs_drawn = 0
         self.imsg_array = list()
         self.imsgs_rendered = False
@@ -604,7 +848,7 @@ class Room:
         self.msg_array = list()
         self._connected = False
         self._name = name
-        self._pingInterval = 200
+        self._pingInterval = 90
         self.connectattempts = 0
         self._firstCommand = True
         self.groupname = name
@@ -625,7 +869,7 @@ class Room:
         self._wlock = False
         self._wlockbuf = b""
         self._mqueue = dict()
-        self._msgs = dict()
+        self.msgs = dict()  # TODO Revisar utilidad y diferencia con el _history
         self._currentname = None
         self._silent = False
         # Added
@@ -634,6 +878,7 @@ class Room:
         self._time = None
         if self.mgr:
             self._connect()
+        self._maxHistoryLength = Gestor.maxHistoryLength  # Por que no guardar un número por sala ?)
         # TODO
 
     ####
@@ -687,20 +932,21 @@ class Room:
         @param msg: message
         """
         self._history.append(msg)
-        if len(self._history) > self.mgr._maxHistoryLength:
-            rest, self._history = self._history[:-self.mgr._maxHistoryLength], self._history[
-                                                                               -self.mgr._maxHistoryLength:]
+        if len(self._history) > self._maxHistoryLength:
+            rest, self._history = self._history[:-self._maxHistoryLength], self._history[
+                                                                           -self._maxHistoryLength:]
             for msg in rest: msg.detach()
 
+    # noinspection PyShadowingNames
     def message(self, msg, html=False, canal=None):
         """
         TODO revisar
         Send a message. (Use "\n" for new line)
         @type msg: str
         @param msg: message
-        :param canal: El número del canal. Del 0 al 4 son Normal,Rojo,Azul,Azul+Rojo,Mod
+        @param canal: El número del canal. Del 0 al 4 son Normal,Rojo,Azul,Azul+Rojo,Mod
         """
-        if canal == None:
+        if canal is None:
             canal = self.channel
         if canal < 4:
             canal = (((canal & 2) << 2 | (canal & 1)) << 8)
@@ -726,7 +972,7 @@ class Room:
         if self._currentname != None and not self._currentname.startswith("!anon"):
             font_properties = "<f x%0.2i%s=\"%s\">" % (self.user.fontSize, self.user.fontColor, self.user.fontFace)
             if "\n" in msg:
-                msg.replace("\n", "</f></p><p>%s" % (font_properties))
+                msg.replace("\n", "</f></p><p>%s" % font_properties)
             msg = font_properties + msg
 
         msg.replace("~", "&#126;")
@@ -745,10 +991,6 @@ class Room:
         if self._sock is not None:
             self._sock.close()
             del self._sock
-        self._sock = socket.socket()
-        self._sock.connect((self._server, self._port))  # TODO Si no hay internet hay error acá
-        self._sock.setblocking(False)
-        self.status = "connecting"
         self._wbuf = (b"GET / HTTP/1.1\r\n"
                       b"Host: " + "{}:{}".format(self._server, self._port).encode() +
                       b"\r\n"
@@ -758,6 +1000,11 @@ class Room:
                       b"Sec-WebSocket-Key: uJkrw+8KgVIZOr2PVaz1Yg==\r\n"
                       b"Sec-WebSocket-Version: 13\r\n"
                       b"\r\n")
+        self._sock = socket.socket()
+        self._sock.connect((self._server, self._port))  # TODO Si no hay internet hay error acá
+        self._sock.setblocking(False)
+        self.status = "connecting"
+
         # self._setWriteLock(True)
 
     def disconnect(self):
@@ -768,11 +1015,12 @@ class Room:
 
     def _disconnect(self):
         # TODO
-        if (self._sock is not None):
+        if self._sock is not None:
             self._sock.close()
         self._sock = None
 
-    def getAnonName(self, num, ts):
+    @staticmethod
+    def getAnonName(num, ts):
         return 'anon' + _getAnonId(num, ts)
 
     def _do_handshake(self, uname=None, password=None):  # TODO auth(self)
@@ -823,7 +1071,6 @@ class Room:
         # self.groupchat_mc.messages_mc.y_top = 0
         self.closeHistory()
         self.participants_number = 0
-        self.participants_number = list()
         # self.disconnect()
         # self.startConnection()
         # self.input_mc.reset()
@@ -838,12 +1085,11 @@ class Room:
         @param args: command and list of arguments
         """
         if self._firstCommand:
-            terminator = b"\x00"
+            terminator = "\x00"
             self._firstCommand = False
         else:
-            terminator = b"\r\n\x00"
-
-        cmd = ":".join(args).encode(errors='replace') + terminator
+            terminator = "\r\n\x00"
+        cmd = ":".join(args) + terminator
         self._write(WS.encode(cmd))
 
     def _setWriteLock(self, lock):
@@ -903,8 +1149,8 @@ class Room:
         elif debug:
             print("unknown data:", data, file=sys.stderr)
 
-    def _rcmd(self):
-        self._callEvent('onPong')
+    def _rcmd_(self, pong):
+        self._callEvent('onPong', pong)
 
     def _rcmd_b(self, args):  # TODO
         mtime = float(args[0])  # Hora de envío del mensaje
@@ -937,7 +1183,7 @@ class Room:
         body, n, f = _clean_message(rawmsg)
         if name == "":
             nameColor = None
-            name = "#" + args[2]
+            name = "#" + tempname
             if name == "#":
                 name = "!anon" + _getAnonId(n, puid)
         else:
@@ -966,7 +1212,8 @@ class Room:
                       puid=puid,
                       room=self,
                       channel=color,
-                      badge=badge)
+                      badge=badge,
+                      msgid=msgid)
         self._mqueue[i] = msg
 
     def _rcmd_g_participants(self, args):
@@ -992,7 +1239,7 @@ class Room:
 
     def _rcmd_getpremium(self, args):
         # TODO
-        print("here")
+        self.mgr.setPremium(args)
 
     def _rcmd_i(self, args):  # TODO
         pass
@@ -1046,9 +1293,10 @@ class Room:
 
 class Gestor:
     _TimerResolution = 0.2
-    _maxHistoryLength = 700
+    maxHistoryLength = 700
     _maxLength = 1800
-    _pingDelay = 200  # 20
+    _pingDelay = 90  # 20
+    PMHost = "c1.chatango.com"
 
     def __init__(self, name=None, password=None, pm=None):
         self._name = name
@@ -1059,6 +1307,8 @@ class Gestor:
         self._rooms_lock = threading.Lock()
         self._running = False
         self._tasks = set()
+        if pm:
+            self._pm = PM(mgr=self)
 
     ####
     # Propiedades
@@ -1078,19 +1328,20 @@ class Gestor:
 
     @classmethod
     def easy_start(cls, rooms=None, name=None, password=None, pm=True):
-        if not rooms:
-            rooms = str(input('Nombres de salas separados por coma: ')).split(';')
-        if not rooms:
-            rooms = []
-        if name is None: name = str(input("Usuario: "))
-        if not name:
-            name = ''
-        if password is None: password = str(input("User password: "))
-        if not password:
-            password = ''
+        # if not rooms:
+        #    rooms = str(input('Nombres de salas separados por coma: ')).split(';')
+        # if '' in rooms:
+        #    rooms = []
+        # if name is None: name = str(input("Usuario: "))
+        # if not name:
+        #    name = ''
+        # if password is None: password = str(input("User password: "))
+        # if not password:
+        #    password = ''
         self = cls(name, password, pm)
         for room in rooms:
             self.joinRoom(room)
+
         self.main()
 
     def onInit(self):
@@ -1150,6 +1401,8 @@ class Gestor:
                     try:
                         con = [x for x in conns if x.sock == sock][0]
                         size = sock.send(con._wbuf)
+                        if con == self._pm:
+                            print("Enviado " + str(con._wbuf[:size]))
                         con._wbuf = con._wbuf[size:]
                     except Exception as e:
                         print("error al enviar" + str(e), sys.stderr)
@@ -1160,10 +1413,11 @@ class Gestor:
                     if chunk:  # TODO
                         con.on_tagserver_data(chunk)
                     else:
-                        pass  # con.disconnect()#.disconnect()#con.reconnect()
+                        print("RECIBIDO ALGO VACIO")
+                    #   pass  # con.disconnect()#.disconnect()#con.reconnect()
             except Exception as e:
                 print("error en main " + str(e), file=sys.stderr)
-                raise e
+                # raise e
             self._tick()
 
     def setInterval(self, intervalo, funcion, *args, **kwargs):
@@ -1171,8 +1425,8 @@ class Gestor:
         Llama a una función cada intervalo con los argumentos indicados
         @type intervalo int
         @param intervalo:intervalo
-        TODO
         :param funcion:  La función que será ejecutada durante el intérvalo
+        TODO
         """
         task = self._Task(self)
         task.mgr = self
@@ -1185,8 +1439,13 @@ class Gestor:
         self._tasks.add(task)
         return task
 
+    def setPremium(self, args):
+        # TODO detectar el estado de mi cuenta
+        pass
+
     def _tick(self):
         now = time.time()
+        #print(time.time())
         for task in self._tasks:
             try:
                 if task.target <= now:
@@ -1225,10 +1484,13 @@ class Gestor:
     def onMessage(self, room, user, message):
         pass
 
+    def onPMPing(self, pm):
+        pass
+
     def onPing(self, room):
         pass
 
-    def onPong(self, room):
+    def onPong(self, room, pong):
         pass
 
     def onRaw(self, room, raw):
@@ -1244,3 +1506,10 @@ class Gestor:
     def onReconnect(self, room):  # TODO
 
         pass
+
+
+class RoomManager(Gestor):
+    """
+    Compatibilidad con la ch
+    """
+    pass
