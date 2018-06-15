@@ -56,6 +56,7 @@ import time
 import urllib.parse
 import urllib.request
 from urllib.error import URLError, HTTPError
+
 ################################################################
 # Depuración
 ################################################################
@@ -213,15 +214,11 @@ def _parseFont(f):
     :param f: El texto con la etiqueta f incrustada
     :return: Fuente, Color, Tamaño
     """
-    match = re.match(r'\s*x(?P<size>[0-9]{2})(?P<color>[a-zA-Z0-9]{3,6})="(?P<font>.*)"', f)
-    if not match:
-        return None, None, None
+    matchs = re.findall('x(\d+){0,2}([0-9a-fA-F]{3,6})="(\d)"', f)
+    if matchs and len(matchs[0]) == 3:
+        return matchs[0]
     else:
-        color = match.groups("color")[0] if match.groups("color") else None
-        font = match.groups("font")[0] if match.groups("font") else None
-        size = match.groups("size")[0] if match.groups("size") else None
-        return color, font, int(size)
-
+        return None, None, None
 
 ################################################################
 # Cosas de la conexión
@@ -432,23 +429,23 @@ def User(name: str, **kwargs):
     user = _users.get(name.lower())
     if not user:
         user = _User(name = name, **kwargs)
-        _users[name] = user
+        _users[name.lower()] = user
     return user
 
 
 class _User:
     # TODO revisar
     def __init__(self, name, **kwargs):
-        self._showname = name
-        self._name = name.lower()
-        self._sids = dict()
-        self._msgs = list()  # TODO Mantener historial reciente de un usuario
-        self._nameColor = '000'
-        self._fontSize = 12
-        self._fontFace = '0'
         self._fontColor = '0'
+        self._fontFace = '0'
+        self._fontSize = 12
         self._mbg = False
+        self._msgs = list()  # TODO Mantener historial reciente de un usuario
         self._mrec = False
+        self._name = name.lower()
+        self._nameColor = '000'
+        self._showname = name
+        self._sids = dict()
         for attr, val in kwargs.items():
             if val is None: continue
             setattr(self, '_' + attr, val)
@@ -484,6 +481,9 @@ class _User:
     def _getNameColor(self):
         return self._nameColor
 
+    def _getShowName(self):
+        return self._showname
+
     name = property(_getName)
     sessionids = property(_getSessionIds)
     rooms = property(_getRooms)
@@ -492,6 +492,7 @@ class _User:
     fontFace = property(_getFontFace)
     fontSize = property(_getFontSize)
     nameColor = property(_getNameColor)
+    showname = property(_getShowName)
 
     ####
     # Util
@@ -644,9 +645,10 @@ class WSConnection:
         :param password: La clave si no hay se usará un nombre temporal o anon
         """
         self._connected = False
+        self._currentaccount = [name, password]
         self._currentname = name  # El usuario de esta conexión
         self._headers = b''  # Las cabeceras que se enviaron en la petición
-        self._name = name
+        self._name = name  # El nombre de la sala o conexión
         self._origin = origin or 'http://st.chatango.com'
         self._password = password  # La clave de esta conexión
         self._port = port or 443  # El puerto de la conexión
@@ -659,6 +661,8 @@ class WSConnection:
         self.mgr = mgr  # El dueño de esta conexión
         if mgr:  # Si el manager está activo iniciar la conexión directamente
             self.conectar()
+
+    def _getAccount(self): return self._currentaccount[0]
 
     def _getConnected(self): return self._connected
 
@@ -673,22 +677,38 @@ class WSConnection:
     def _getWbuf(self):
         return self._wbuf
 
+    account = property(_getAccount)
     connected = property(_getConnected)
     name = property(_getName)
     sock = property(_getSock)
     user = property(_getUser)
     wbuf = property(_getWbuf)
 
-    def conectar(self):
-        self._conectar()
-        pass
+    def connect(self):
+        """Iniciar la conexión con el servidor
+        #TODO
+        """
+        self._connect()
 
-    def _conectar(self):
+    def _connect(self):
         self._sock = socket.socket()
         self._sock.connect((self._server, self._port))  # TODO Si no hay internet hay error acá
         self._sock.setblocking(False)
         self._handShake()
-        pass
+
+    def _disconnect(self):
+        # TODO Comprobar
+        if self._sock is not None:
+            self._sock.close()
+        self._sock = None
+        if isinstance(self, PM):
+            self.pm = None
+        else:
+            self._rooms.pop(self.name)
+
+    def disconnect(self):
+        self._disconnect()
+        self._callEvent('onDisconnect')
 
     def _reconnect(self):
         # TODO reiniciar todas las conexiones
@@ -698,17 +718,20 @@ class WSConnection:
     def _handShake(self):
         """Crea un handshake y lo guarda en las variables antes de enviarlo a la conexión"""
         self._headers = (
-                "GET / HTTP/1.1\r\n"
-                "Host: " + "{}:{}\r\n"
-                           "Origin : {}\r\n"
-                           "Connection : Upgrade\r\n"
+            "GET / HTTP/1.1\r\n"
+            "Host: {}:{}\r\n"
+            "Origin: {}\r\n"
+            "Connection: Upgrade\r\n"
                            "Upgrade: websocket\r\n"
                            "Sec-WebSocket-Key: {}\r\n"
                            "Sec-WebSocket-Version: 13\r\n\r\n"
         ).format(self._server, self._port, self._origin, WS.genseckey()).encode()
         self._wbuf = self._headers
+        self._setWriteLock(True)
+        self._pingTask = self.mgr.setInterval(self._pingInterval, self.ping)
 
     def _login(self):
+        """Sobreescribir. PM y Room lo hacen diferente"""
         pass
 
     def _callEvent(self, evt, *args, **kw):
@@ -759,8 +782,30 @@ class WSConnection:
         if hasattr(self, func):
             getattr(self, func)(args)
         elif debug:
-            print("unknown data:", data, file = sys.stderr)
-        pass
+            print('[{}][{:^10.10}]UNKNOWN DATA "{}"'.format(time.strftime('%I:%M:%S'), self.name, data),
+                  file = sys.stderr)
+
+    def ping(self):
+        # TODO NO sirve el onPMPing?
+        self._sendCommand('')
+        self._callEvent('onPing')
+
+    def _rcmd_(self, pong):
+        self._callEvent('onPong', pong)
+
+    def _sendCommand(self, *args):
+        """
+        Envía un comando al servidor
+        @type args: [str, str, ...]
+        @param args: command and list of arguments
+        """
+        if self._firstCommand:
+            terminator = "\x00"
+            self._firstCommand = False
+        else:
+            terminator = "\r\n\x00"
+        cmd = ":".join(args) + terminator
+        self._write(WS.encode(cmd))
 
     def _setWriteLock(self, lock: bool):
         self._wlock = lock
@@ -768,8 +813,15 @@ class WSConnection:
             self._wbuf += self._wlockbuf
             self._wlockbuf = b''
 
+    def _write(self, data: bytes):
+        """Escribir datos en el buffer de envío al servidor"""
+        if self._wlock:
+            self._wlockbuf += data
+        else:
+            self._wbuf += data
 
-class PM:
+
+class PM(WSConnection):
     def __init__(self, mgr, name, password):
         """
         Clase que maneja una conexión con la mensajería privada de chatango
@@ -778,7 +830,7 @@ class PM:
         @param name: Nombre del usuario
         @param password: Contraseña para la conexión
         """
-        # super ( ).__init__ ( mgr , name , password )
+        super().__init__(None, name, password)
         self._auth_re = re.compile(
                 r"auth\.chatango\.com ?= ?([^;]*)", re.IGNORECASE
                 )
@@ -788,6 +840,7 @@ class PM:
         self.currentname = None
         self._firstCommand = True
         self._name = 'PM'
+        # self._origin='st.chatango.com'
         self._pingInterval = 90  # Max iddle time is 300
         self._port = 8080  # TODO
         self._rbuf = b''
@@ -802,10 +855,7 @@ class PM:
         self.mgr = mgr
         self.statusmp = ""
         if self.mgr:
-            self.connect(self.mgr.name)
-
-    def getConnections(self):
-        return [self]
+            self.connect()
 
     # Propiedades
     def _getName(self):
@@ -821,67 +871,9 @@ class PM:
     sock = property(_getSock)
     status = property(_getStatus)
 
-    def _auth(self):
-        # TODO
-        # self._auid = self._getAuth(self.mgr.name, self.mgr.password)
-        # if self._auid == None:
-        #    self._sock.close()
-        #    self._callEvent("onLoginFail")
-        #    self._sock = None
-        #    return False
-        # self._sendCommand("tlogin", self._auid,"2")
-        # self._firstCommand = True
-        # self._sendCommand("tlogin",
-        #                  "828C1900696B6171538454F7872BAC10DBFA62933E528A0E09CCF6E52F3166D10955BBCD61BF4CA1",
-        #                  "2")
-        # self._setWriteLock(True)
-        return True
-
     def _callEvent(self, evt, *args, **kw):
         getattr(self.mgr, evt)(self, *args, **kw)
         self.mgr.onEventCalled(self, evt, *args, **kw)
-
-    def connect(self, name):
-        """
-        Contectarse duh
-        @param name:
-        """
-        # TODO
-        self._connect(name)
-
-    def _connect(self, name):  # TODO
-        self._wbuf = b""
-        self._sock = socket.socket()
-        self._statuspm = "bc_connecting"
-        # websocket.create_connection(URL ,origin="http://st.chatango.com")
-        self._sock.connect(("c1.chatango.com", self._port))  # ,origin="http://st.chatango.com")
-        self._statuspm = "bc_socket_connected"
-        self._sock.setblocking(False)
-        self._wbuf = (b"GET / HTTP/1.1\r\n"
-                      b"Host: " + "c1.chatango.com:{}".format(self._port).encode() + b"\r\n"
-                                                                                     b"Origin: "
-                                                                                     b"http://st.chatango.com\r\n"
-                                                                                     b"Connection: Upgrade\r\n"
-                                                                                     b"Upgrade: websocket\r\n"
-                                                                                     b"Sec-WebSocket-Key: "
-                                                                                     b"uJkrw+8KgVIZOr2PVaz1Yg==\r\n"
-                                                                                     b"Sec-WebSocket-Version: "
-                                                                                     b"13\r\n"
-                                                                                     b"\r\n")
-        self.statusmp = "connecting"
-        self._firstCommand = True
-        self._setWriteLock(True)
-        # self._persons[name]._sock=sock
-        # if not self._persons[name]._auth()
-        self._pingTask = self.mgr.setInterval(self._pingInterval, self.ping)
-        # self._sock = socket.socket()
-        # self._sock.connect((self._mgr._PMHost, self._mgr._PMPort))
-        # self._sock.setblocking(False)
-
-        if not self._auth(): return
-        # self._pingTask = self.mgr.setInterval(self._mgr._pingDelay, self.ping)
-        self._connected = True
-        # self.mgr._running = True
 
     def _do_handshake(self, uname = None, password = None):
         """Autenticar.
@@ -937,70 +929,28 @@ class PM:
                     return auth
         return None
 
-    def login(self):
+    def _login(self):
         # TODO el 2 es la versión del cliente
         __reg2 = ["tlogin", self._getAuth(self.mgr.name, self.mgr.password), "2"]
         self._sendCommand(*__reg2)
 
-    def onData(self, data: bytes):
-        self.on_tagserver_data(data)
-
-    def on_tagserver_data(self, data):
-        """Al recibir datos del servidor"""
-        self._rbuf += data
-        if self.statusmp == "connecting" and b'\r\n' * 2 in data:
-            headers, self._rbuf = self._rbuf.split(b"\r\n" * 2)
-            clave = WS.checkHeaders(headers)
-            if clave != 'Vm7scDIsH+hcgn948Ftni+ulSAs=':
-                pass  # TODO
-            else:
-                self.statusmp = "connected"
-                self._setWriteLock(False)
-                self.login()  # self.mgr.name,self.mgr.password)  # auth
-
-        else:
-            r = WS.checkFrame(self._rbuf)
-            while r:
-                frame = self._rbuf[:r]
-                self._rbuf = self._rbuf[r:]
-                info = WS.frameInfo(frame)  # TODO
-                payload = WS.getPayload(frame)
-                if info.opcode == WS.CLOSE:  # server wants to close connection
-                    pass  # self.reconnect()
-                elif info.opcode == WS.TEXT:  # actual data
-                    self._process(payload)
-                elif debug:
-                    print("unhandled frame:", "with payload", payload, file = sys.stderr)
-                r = WS.checkFrame(self._rbuf)
-
-    def ping(self):
-        self._sendCommand("")
-        self._callEvent("onPMPing")
-
-    def _process(self, data):
+    def message(self, user, msg):
         """
-        Process a command string.
-        @type data: str
-        @param data: the command string
+        Enviar un pm a un usuario
+        @param user: Usuario al que enviar el mensaje
+        @param msg: Mensaje que se envia (string)
         """
-        self._callEvent("onRaw", data)
-        data = data.split(":")
-        cmd, args = data[0], data[1:]
-        func = "_rcmd_" + cmd
-        if hasattr(self, func):
-            getattr(self, func)(args)
-        else:
-            if debug and data[0] not in ["\r\n", "", "\r\n\x00"]:
-                print("UNKNOWN DATA IN MP: " + str(data))
-
-    def _sendCommand(self, *args):
-        if self._firstCommand:
-            terminator = "\x00"
-            self._firstCommand = False
-        else:
-            terminator = "\r\n\x00"
-        cmd = ":".join(args) + terminator
-        self._write(WS.encode(cmd))
+        if isinstance(user, _User):
+            user = user.name
+        fc = self.user.fontColor
+        fc = fc[::2] if len(fc) == 6 else fc[:3]
+        self._sendCommand("msg", user,
+                          '<n{}/><m v="1"><g x{}s{}="{}">{}</g></m>'.format(
+                                  self.user.nameColor,
+                                  self.user.fontSize, fc.lower(),
+                                  self.user.fontFace, msg
+                                  )
+                          )
 
     def _setWriteLock(self, args):
         self._wlock = args
@@ -1060,7 +1010,7 @@ class Room(WSConnection):
         self._badge = 0
         self._time = None
         if self.mgr:
-            super().conectar()
+            super().connect()
         #    self._connect ( )
         self._maxHistoryLength = Gestor.maxHistoryLength  # Por que no guardar un número por sala ?)
         # TODO
@@ -1131,7 +1081,6 @@ class Room(WSConnection):
                     msg = msg[self.mgr._maxLength:]
                     self.message(sect, html = html)
             return
-        msg = '<n41DEED/><f x032555="1">' + msg
         msg = "<n" + self.user.nameColor + "/>" + msg
 
         if self._currentname is not None and not self._currentname.startswith("!anon"):
@@ -1143,23 +1092,11 @@ class Room(WSConnection):
         msg.replace("~", "&#126;")
         self.rawMessage('%s:%s' % (canal + self.badge * 64, msg))
 
-    def disconnect(self):
-        # TODO
-        self._disconnect()
-        self._callEvent("onDisconnect")
-        del self.mgr._rooms[self.name]
-
-    def _disconnect(self):
-        # TODO
-        if self._sock is not None:
-            self._sock.close()
-        self._sock = None
-
     @staticmethod
     def getAnonName(num, ts):
         return 'anon' + _getAnonId(num, ts)
 
-    def _login(self, uname = None, password = None):  # TODO auth(self)
+    def _login(self, uname = None, password = None):  # TODO, Name y password no shilven
         """
         Autenticar. Logearse como uname con password. En caso de no haber ninguno usa la _currentaccount
         @param uname: Nombre del usuario (string)
@@ -1207,29 +1144,6 @@ class Room(WSConnection):
         # group_classes.BannedWords.getInstance().clearRequests()
         # _root.chatango_msg.removeMovieClip()
 
-    def _sendCommand(self, *args):
-        """
-        Send a command.
-        @type args: [str, str, ...]
-        @param args: command and list of arguments
-        """
-        if self._firstCommand:
-            terminator = "\x00"
-            self._firstCommand = False
-        else:
-            terminator = "\r\n\x00"
-        cmd = ":".join(args) + terminator
-        self._write(WS.encode(cmd))
-
-    def _write(self, data: bytes):
-        if self._wlock:
-            self._wlockbuf += data
-        else:
-            self._wbuf += data
-
-    def _rcmd_(self, pong):
-        self._callEvent('onPong', pong)
-
     def _rcmd_b(self, args):  # TODO
         mtime = float(args[0])  # Hora de envío del mensaje
         name = args[1]  # Nombre de usuario si lo hay
@@ -1238,26 +1152,26 @@ class Room(WSConnection):
         msgid = args[4]  # Id del mensaje
         unknown2 = args[5]
         ip = args[6]  # Ip del usuario
-        color = args[7] or 0
+        channel = args[7] or 0
         badge = 0
         rawmsg = ":".join(args[9:])
-        if color and color.isdigit():
-            color = int(color)
-            if color < 256:  # Canal Normal
-                badge = 0 if color < 64 else 1 if color < 128 else 2
-                color = 0
-            elif 256 <= color < 2048:  # Canal Rojo con o sin badge
-                badge = 0 if color < 256 + 64 else 1 if color < 256 + 128 else 2
-                color = 256
-            elif 2048 <= color < 2304:
-                badge = 0 if color < 2048 + 64 else 1 if color < 2048 + 128 else 2
-                color = 2048
-            elif 2304 <= color < 32768:
-                badge = 0 if color < 2304 + 64 else 1 if color < 2304 + 128 else 2
-                color = 2304
-            elif color >= 32768:
-                badge = 0 if color < 32768 + 64 else 1 if color < 32768 + 128 else 2
-                color = 32768
+        if channel and channel.isdigit():
+            channel = int(channel)
+            if channel < 256:  # Canal Normal
+                badge = 0 if channel < 64 else 1 if channel < 128 else 2
+                channel = 0
+            elif 256 <= channel < 2048:  # Canal Rojo con o sin badge
+                badge = 0 if channel < 256 + 64 else 1 if channel < 256 + 128 else 2
+                channel = 256
+            elif 2048 <= channel < 2304:
+                badge = 0 if channel < 2048 + 64 else 1 if channel < 2048 + 128 else 2
+                channel = 2048
+            elif 2304 <= channel < 32768:
+                badge = 0 if channel < 2304 + 64 else 1 if channel < 2304 + 128 else 2
+                channel = 2304
+            elif channel >= 32768:
+                badge = 0 if channel < 32768 + 64 else 1 if channel < 32768 + 128 else 2
+                channel = 32768
         body, n, f = _clean_message(rawmsg)
         if name == "":
             nameColor = None
@@ -1271,10 +1185,12 @@ class Room(WSConnection):
                 nameColor = None
         i = args[5]
         unid = args[4]
-        user = User(name)
+        user = User(name, ip = ip)  # ,nameColor=nameColor,
+        #fontColor=fontColor)
         # Create an anonymous message and queue it because msgid is unknown.
         if f:
-            fontColor, fontFace, fontSize = _parseFont(f)
+            fontSize, fontColor, fontFace = _parseFont(f.strip())
+            print(_parseFont(f.strip()))
         else:
             fontColor, fontFace, fontSize = None, None, None
         msg = Message(time = mtime,
@@ -1285,11 +1201,11 @@ class Room(WSConnection):
                       nameColor = nameColor,
                       fontColor = fontColor,
                       fontFace = fontFace,
-                      fontSize = fontSize,
+                      fontSize = fontSize or '11',
                       unid = unid,
                       puid = puid,
                       room = self,
-                      channel = color,
+                      channel = channel,
                       badge = badge,
                       msgid = msgid)
         self._mqueue[i] = msg
@@ -1358,11 +1274,10 @@ class Room(WSConnection):
         if hasattr(temp, args[0]):
             msg = getattr(temp, args[0])
             if msg._user != self.user:
-                # msg.user._fontColor = msg.fontColor
-                # msg.user._fontFace = msg.fontFace
-                # msg.user._fontSize = msg.fontSize
-                # msg.user._nameColor = msg.nameColor
-                pass
+                msg._user._fontColor = msg.fontColor
+                msg._user._fontFace = msg.fontFace
+                msg._user._fontSize = msg.fontSize
+                msg._user._nameColor = msg.nameColor
             del self._mqueue[args[0]]
             msg.attach(self, args[1])
             self._addHistory(msg)
@@ -1382,7 +1297,7 @@ class Gestor:
             self._accounts = [(name, password)]
         self._name = self._accounts[0][0]
         self._password = self._accounts[0][1]
-        self._pm = pm
+        self.pm = pm
         self._rooms = dict()
         self._rooms_queue = queue.Queue()
         self._rooms_lock = threading.Lock()
@@ -1443,7 +1358,7 @@ class Gestor:
     def getConnections(self):
         li = list(self._rooms.values())
         if self._pm:
-            li.extend(self._pm.getConnections())
+            li.append(self._pm)
         return [c for c in li if c._sock is not None]
 
     def getRoom(self, room: str) -> Room:

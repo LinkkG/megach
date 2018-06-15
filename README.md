@@ -1,7 +1,8 @@
 # megach
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
-        original chatango flash code
+        SellersApp.swf/SellersExternal.swf  Original chatango flash code for Private Messaging
+        Group.swf/FlashGroup.swf            Original chatango flash code for rooms
         cherry.py          https://github.com/Sweets/Cherry-Blossom
         ch.py              https://github.com/Nullspeaker/ch.py
         ch.py and _ws.py   https://github.com/TheClonerx/chatango-bot

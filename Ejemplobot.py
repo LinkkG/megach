@@ -60,8 +60,16 @@ class Mibot(megach.Gestor):
                     time.strftime("%I:%M:%S %p"),
                     ubic))
             if user.name in owners:
-                if message.body.strip().split()[0] == '|eval':
-                    room.message(str(eval(message.body.strip().split()[1])))
+                if message.body.strip().split()[0] in ['|eval', '|exec']:
+                    try:
+                        room.message(str(eval(message.body.strip().split(' ', 1)[1])))
+                    except:
+                        try:
+                            room.message(str(exec(message.body.strip().split(' ', 1)[1])))
+                        except Exception as e:
+                            raise e
+                if message.body.strip().split()[0] == '|exec':
+                    room.message(str(exec(message.body.strip().split()[1])))
         except Exception as e:
             room.message(str(e))
 
@@ -78,13 +86,13 @@ class Mibot(megach.Gestor):
         @param pm: El controlador del PM
         @return: None
         """
-        print("[{}] Conectado al PM como {}".format(time.strftime("%I:%M:%s %p")), pm.currentname)
+        print("[{}] Conectado al PM como {}".format(time.strftime("%I:%M:%s %p"), pm.currentname))
 
     def onPong(self, room, pong):
         """
         Al recibir un pong de una sala
         @param room: La sala en la que se recibió el pong
-        @param pongdata: Posibles datos del pong
+        @param pong: Posibles datos del pong
         """
         print("[{}][{0:_^10.10}] Pong recibido".format(time.strftime("%I:%M:%S %p"), room.name))
 
