@@ -1,10 +1,12 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
-File: roxvent.py
+File: megach.py
 Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.5
+Version: M1.6
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -51,11 +53,10 @@ import re
 import select
 import socket
 import sys
-import threading
 import time
 import urllib.parse
 import urllib.request
-from urllib.error import URLError, HTTPError
+from urllib.error import HTTPError, URLError
 
 ################################################################
 # Depuración
@@ -152,7 +153,7 @@ Channels = {
     "shield": 64,
     "staff":  128,
     "mod":    32780
-    }
+    }  # TODO darle uso
 BigMessage_Cut = 1
 BigMessage_Multiple = 0
 Number_of_Threads = 1
@@ -168,9 +169,11 @@ def _clean_message(msg: str) -> [str, str, str]:
     @returns: cleaned message, n tag contents, f tag contents
     """
     n = re.search("<n(.*?)/>", msg)
-    if n: n = n.group(1)
+    if n:
+        n = n.group(1)
     f = re.search("<f(.*?)>", msg)
-    if f: f = f.group(1)
+    if f:
+        f = f.group(1)
     msg = re.sub("<n.*?/>", "", msg)
     msg = re.sub("<f.*?>", "", msg)
     msg = _strip_html(msg)
@@ -220,6 +223,7 @@ def _parseFont(f):
     else:
         return None, None, None
 
+
 ################################################################
 # Cosas de la conexión
 ################################################################
@@ -249,6 +253,7 @@ class WS:
 
     @staticmethod
     def genseckey():
+        """Genera una clave de Seguridad Websocket"""
         return base64.encodebytes(os.urandom(16)).decode('utf-8').strip()
 
     @staticmethod
@@ -314,18 +319,9 @@ class WS:
         @param headers:
         @return: dict/None
         """
-        version = None
-        if isinstance(headers, (bytes, bytearray)):
-            if b"\r\n\r\n" in headers:
-                headers, _ = headers.split(b"\r\n\r\n", 1)
-            headers = headers.decode()
-        if isinstance(headers, str):
-            headers = headers.splitlines()
-        if isinstance(headers, list):
-            if ": " not in headers[0]:
-                version, _ = headers[0].split(" ", 1)
-                headers = headers[1:]
-            headers = {y.lower(): z for y, z in map(lambda x: x.split(": ", 1), headers)}
+        if isinstance(headers, bytes):
+            headers = WS.getHeaders(headers)
+        version = headers.get('version')
         if version:
             version = version.split("/")[1]
             version = tuple(int(x) for x in version.split("."))
@@ -344,7 +340,9 @@ class WS:
     @staticmethod
     def frameInfo(buffer: bytes) -> FrameInfo:
         """
-        returns a tuple that describes a frame
+        Regresa una tupla con la descripción de un frame
+        @param buffer: Frame que se va a examinar
+        @return: objeto FrameInfo
         """
         r = WS.checkFrame(buffer)
         if not r:
@@ -367,7 +365,6 @@ class WS:
         @param headers: Los datos recibidos
         @return: Los headers en formato dict
         """
-        version = None
         if isinstance(headers, (bytes, bytearray)):
             if b"\r\n\r\n" in headers:
                 headers, _ = headers.split(b"\r\n\r\n", 1)
@@ -401,6 +398,12 @@ class WS:
 
     @staticmethod
     def getServerSeckey(headers: bytes, key: bytes = 'b') -> str:
+        """
+        Calcula la respuesta que debe dar el servidor según la clave de seguridad que se le envió
+        @param headers: Los valores enviados al servidor. Si se recibe, se ignorará el parámetro key
+        @param key: La clave que se le envió.
+        @return: Clave que debería enviar el servidor (string)
+        """
         if headers:
             key = WS.getHeaders(headers)['sec-websocket-key'].encode()
         sha = hashlib.sha1(key + b'258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
@@ -425,7 +428,8 @@ def User(name: str, **kwargs):
     :param kwargs: Datos que contendrá el usuario
     :return: Usuario nuevo o encontrado en la lista
     """
-    if name is None: name = ""
+    if name is None:
+        name = ""
     user = _users.get(name.lower())
     if not user:
         user = _User(name = name, **kwargs)
@@ -447,7 +451,8 @@ class _User:
         self._showname = name
         self._sids = dict()
         for attr, val in kwargs.items():
-            if val is None: continue
+            if val is None:
+                continue
             setattr(self, '_' + attr, val)
         # TODO Más cosas del user
 
@@ -535,19 +540,21 @@ class Message:
         self._channel = 0
         self._badge = 0
         for attr, val in kw.items():
-            if val is None: continue
+            if val is None:
+                continue
             setattr(self, "_" + attr, val)
 
     def __repr__(self):
-        return self.body
-
+        return self.body.rstrip('\n')
+    
     def __str__(self):
         return '[%s][%s]:%s' % (self.room.name, self.user.name, self.body)
 
     ####
     # Properties
     ####
-    def _getUser(self):
+    @property
+    def user(self):
         return self._user
 
     def _getId(self):
@@ -557,8 +564,8 @@ class Message:
         return self._time
 
     def _getBody(self):
-        return self._body
-
+        return self._body.replace('\n', '').replace('  ', ' ')
+    
     def _getIP(self):
         return self._ip
 
@@ -594,7 +601,6 @@ class Message:
 
     msgid = property(_getId)
     time = property(_getTime)
-    user = property(_getUser)
     body = property(_getBody)
     room = property(_getRoom)
     ip = property(_getIP)
@@ -637,84 +643,116 @@ class Message:
 
 
 class WSConnection:
-    def __init__(self, mgr = None, name: str = '', password: str = '', server = '', port = None, origin = ''):
+    """
+    Base para manejar las conexiones con Mensajes y salas
+    """
+    
+    def __init__(self, mgr: object = None, name: str = '', password: str = '', server: str = '',
+                 port: str = None, origin: str = '') -> None:
         """
-        Inicializar una instancia con el manager indicado
-        :param mgr: El dueño de esta conexión
-        :param name: El nombre de usuario si no hay se conecta como anon
-        :param password: La clave si no hay se usará un nombre temporal o anon
+        TODO
+        @param mgr: El dueño de esta conexión
+        @param name: El nombre de usuario si no hay se conecta como anon
+        @param password: La clave si no hay se usará un nombre temporal o anon
+        @param server:
+        @param port:
+        @param origin:
         """
+        self._connectattempts = 0
         self._connected = False
         self._currentaccount = [name, password]
         self._currentname = name  # El usuario de esta conexión
+        self._firstCommand = True  # Si es el primer comando enviado
         self._headers = b''  # Las cabeceras que se enviaron en la petición
         self._name = name  # El nombre de la sala o conexión
         self._origin = origin or 'http://st.chatango.com'
         self._password = password  # La clave de esta conexión
+        self._pingInterval = 90  # Intervalo para enviar pings, Si llega a 300 se desconecta
         self._port = port or 443  # El puerto de la conexión
         self._rbuf = b''  # El buffer de lectura  de la conexión
         self._server = server
         self._serverheaders = b''  # Las caberceras de respuesta que envió el servidor
+        self._sock = None
         self._wbuf = b''  # El buffer de escritura a la conexión
         self._wlock = False  # Si está activo no se debe envíar nada al buffer de escritura
         self._wlockbuf = b''  # Buffer de escritura bloqueado, se almacena aquí cuando el lock está activo
         self.mgr = mgr  # El dueño de esta conexión
         if mgr:  # Si el manager está activo iniciar la conexión directamente
-            self.conectar()
-
-    def _getAccount(self): return self._currentaccount[0]
-
-    def _getConnected(self): return self._connected
-
-    def _getName(self): return self._name
-
-    def _getSock(self):
+            self.connect()
+    
+    @property
+    def account(self):
+        return User(self._currentaccount[0].lower())
+    
+    @property
+    def attempts(self):
+        return self._connectattempts
+    
+    @property
+    def connected(self):
+        return self._connected
+    
+    @property
+    def currentname(self):
+        return self._currentname
+    
+    @property
+    def name(self):
+        return self._name
+    
+    @property
+    def sock(self):
         return self._sock
-
-    def _getUser(self):
-        return self.mgr.user
-
-    def _getWbuf(self):
+    
+    @property
+    def user(self):
+        return self._user
+    
+    @property
+    def wbuf(self):
         return self._wbuf
-
-    account = property(_getAccount)
-    connected = property(_getConnected)
-    name = property(_getName)
-    sock = property(_getSock)
-    user = property(_getUser)
-    wbuf = property(_getWbuf)
-
+    
     def connect(self):
-        """Iniciar la conexión con el servidor
-        #TODO
-        """
-        self._connect()
-
-    def _connect(self):
+        """ Iniciar la conexión con el servidor y llamar a _handshake() """
+        self._connectattempts += 1
         self._sock = socket.socket()
         self._sock.connect((self._server, self._port))  # TODO Si no hay internet hay error acá
         self._sock.setblocking(False)
         self._handShake()
-
+    
     def _disconnect(self):
-        # TODO Comprobar
+        """Privado: Solo usar para reconneción
+        Cierra la conexión y detiene los pings, el objeto sigue existiendo dentro de su mgr"""
         if self._sock is not None:
             self._sock.close()
         self._sock = None
+        self._pingTask.cancel()
+    
+    def disconnect(self):
+        """Público, desconección completa"""
+        self._disconnect()
         if isinstance(self, PM):
             self.pm = None
         else:
-            self._rooms.pop(self.name)
-
-    def disconnect(self):
-        self._disconnect()
+            self.mgr._rooms.pop(self.name)
         self._callEvent('onDisconnect')
-
-    def _reconnect(self):
-        # TODO reiniciar todas las conexiones
+    
+    def reconnect(self):
         self._disconnect()
-        self._connect()
-
+        self._reset()
+        self.connect()
+    
+    def _reset(self):
+        """
+        Reinicia algunas variables para la conexión
+        ADVERTENCIA usar con cuidado
+        """
+        self._headers = b''
+        self._serverheaders = b''
+        self._wbuf = b''  # El buffer de escritura a la conexión
+        self._wlock = False  # Si está activo no se debe envíar nada al buffer de escritura
+        self._wlockbuf = b''  # Buffer de escritura bloqueado, se almacena aquí cuando el lock está activo
+    
     def _handShake(self):
         """Crea un handshake y lo guarda en las variables antes de enviarlo a la conexión"""
         self._headers = (
@@ -722,22 +760,22 @@ class WSConnection:
             "Host: {}:{}\r\n"
             "Origin: {}\r\n"
             "Connection: Upgrade\r\n"
-                           "Upgrade: websocket\r\n"
-                           "Sec-WebSocket-Key: {}\r\n"
-                           "Sec-WebSocket-Version: 13\r\n\r\n"
+            "Upgrade: websocket\r\n"
+            "Sec-WebSocket-Key: {}\r\n"
+            "Sec-WebSocket-Version: 13\r\n\r\n"
         ).format(self._server, self._port, self._origin, WS.genseckey()).encode()
         self._wbuf = self._headers
         self._setWriteLock(True)
         self._pingTask = self.mgr.setInterval(self._pingInterval, self.ping)
-
+    
     def _login(self):
         """Sobreescribir. PM y Room lo hacen diferente"""
         pass
-
+    
     def _callEvent(self, evt, *args, **kw):
         getattr(self.mgr, evt)(self, *args, **kw)
         self.mgr.onEventCalled(self, evt, *args, **kw)
-
+    
     def onData(self, data: bytes):
         """
         Al recibir datos del servidor
@@ -768,7 +806,7 @@ class WSConnection:
                 elif debug:
                     print('Frame no controlado: "{}"'.format(payload), file = sys.stderr)
                 r = WS.checkFrame(self._rbuf)
-
+    
     def _process(self, data: str):
         """
         Procesar un comando recibido del servidor
@@ -776,23 +814,26 @@ class WSConnection:
         @return: None
         """
         self._callEvent("onRaw", data)
-        data = data.split(":")
+        data = data.rstrip("\r\n\x00").split(":")
         cmd, args = data[0], data[1:]
         func = "_rcmd_" + cmd
         if hasattr(self, func):
             getattr(self, func)(args)
         elif debug:
-            print('[{}][{:^10.10}]UNKNOWN DATA "{}"'.format(time.strftime('%I:%M:%S'), self.name, data),
+            print('[{}][{:^10.10}]UNKNOWN DATA "{}"'.format(time.strftime('%I:%M:%S %p'), self.name, ':'.join(data)),
                   file = sys.stderr)
-
+    
     def ping(self):
+        """Enviar un ping al servidor para mantener la conexión activa"""
         # TODO NO sirve el onPMPing?
+        # TODO Calcular el proximo ping
         self._sendCommand('')
         self._callEvent('onPing')
-
+    
     def _rcmd_(self, pong):
+        """Al recibir un pong"""
         self._callEvent('onPong', pong)
-
+    
     def _sendCommand(self, *args):
         """
         Envía un comando al servidor
@@ -806,13 +847,13 @@ class WSConnection:
             terminator = "\r\n\x00"
         cmd = ":".join(args) + terminator
         self._write(WS.encode(cmd))
-
+    
     def _setWriteLock(self, lock: bool):
         self._wlock = lock
         if not self._wlock and self._wlockbuf:
             self._wbuf += self._wlockbuf
             self._wlockbuf = b''
-
+    
     def _write(self, data: bytes):
         """Escribir datos en el buffer de envío al servidor"""
         if self._wlock:
@@ -822,6 +863,10 @@ class WSConnection:
 
 
 class PM(WSConnection):
+    """
+    Clase Base para la conexión con la mensajería privada de chatango
+    """
+    
     def __init__(self, mgr, name, password):
         """
         Clase que maneja una conexión con la mensajería privada de chatango
@@ -830,66 +875,28 @@ class PM(WSConnection):
         @param name: Nombre del usuario
         @param password: Contraseña para la conexión
         """
-        super().__init__(None, name, password)
+        super().__init__(name = name, password = password)
         self._auth_re = re.compile(
                 r"auth\.chatango\.com ?= ?([^;]*)", re.IGNORECASE
                 )
         self._blocklist = set()
-        self._connected = False
         self._contacts = set()
-        self.currentname = None
-        self._firstCommand = True
         self._name = 'PM'
+        self._currentname = name
         # self._origin='st.chatango.com'
-        self._pingInterval = 90  # Max iddle time is 300
         self._port = 8080  # TODO
-        self._rbuf = b''
-        self._sock = None  # TODO
         self._server = 'c1.chatango.com'
         # self._server = 'i0.chatango.com'  # TODO
         self._status = dict()
-        self._wbuf = b''
-        self._wlockbuf = b""
-        self._wlock = False
-        self.connectattempts = 0
         self.mgr = mgr
-        self.statusmp = ""
         if self.mgr:
             self.connect()
-
-    # Propiedades
-    def _getName(self):
-        return self._name
-
-    def _getSock(self):
-        return self._sock
-
+    
+    @property
     def _getStatus(self):
+        # TODO
         return self._status
-
-    name = property(_getName)
-    sock = property(_getSock)
-    status = property(_getStatus)
-
-    def _callEvent(self, evt, *args, **kw):
-        getattr(self.mgr, evt)(self, *args, **kw)
-        self.mgr.onEventCalled(self, evt, *args, **kw)
-
-    def _do_handshake(self, uname = None, password = None):
-        """Autenticar.
-        Logearse como uname con password"""
-        # self.reset()  # TODO
-        # self.nomore = False
-        # self._write(b'version:4:1\x00')
-        __reg2 = ["tlogin", uname or self.mgr.name]  # TODO comando
-        self._currentname = uname or self.mgr.name
-        if not uname and self.mgr.password:
-            __reg2.append(self.mgr.password)
-        else:
-            __reg2.append(password or '')
-        # self._sendCommand(*__reg2)
-        self._write(":".join(__reg2).encode(errors = "replace"))
-
+    
     def _getAuth(self, name, password):
         """
         Request an auid using name and password.
@@ -928,12 +935,12 @@ class PM(WSConnection):
                         return None
                     return auth
         return None
-
+    
     def _login(self):
         # TODO el 2 es la versión del cliente
         __reg2 = ["tlogin", self._getAuth(self.mgr.name, self.mgr.password), "2"]
         self._sendCommand(*__reg2)
-
+    
     def message(self, user, msg):
         """
         Enviar un pm a un usuario
@@ -951,91 +958,92 @@ class PM(WSConnection):
                                   self.user.fontFace, msg
                                   )
                           )
-
-    def _setWriteLock(self, args):
-        self._wlock = args
-        if not self._wlock:
-            self._write(self._wlockbuf)
-            self._wlockbuf = b''
-
+    
     def _write(self, data: bytes):
         if not self._wlock:
             self._wbuf += data
         else:
             self._wlockbuf += data
-
-    def _rcmd_ok(self):
+    
+    def _rcmd_OK(self, args):
+        if args:
+            print(args)
         self._callEvent('onPMConnect')
 
 
 class Room(WSConnection):
-    def __init__(self, name, mgr = None, account = None, uid = None, server = None, port = None):
-        super().__init__(None, account[0], account[1])
-        self._currentaccount = account
-        self.participants_number = list()
-        self.imsgs_drawn = 0
-        self.imsg_array = list()
-        self.imsgs_rendered = False
-        self.lastmsgnum = 0
-        self.bmsg_array = list()
-        self.msg_array = list()
-        self._connected = False
-        self._name = name
-        self._pingInterval = 90
-        self.connectattempts = 0
-        self._firstCommand = True
-        self.groupname = name
-        self._history = list()
-        self.status = None
-        self.groupURL = name  # TODO
-        self.mgr = mgr
-        self.participants = list()
-        self._port = 1800  # TODO
-        self.grouphistory = None
-        self.ownername = ''
-        self._rbuf = b''
-        self.sellers_array = list()
-        self._server = getServer(name)  # TODO
-        self._sock = None  # TODO
-        self.usercount = 0
-        self._wbuf = b""
-        self._wlock = False
-        self._wlockbuf = b""
-        self._mqueue = dict()
-        self.msgs = dict()  # TODO Revisar utilidad y diferencia con el _history
-        self._currentname = account[0]
-        self._silent = False
-        # Added
-        self._channel = 0
+    """
+    Base para manejar las conexiones con las salas. Hereda de WSConnection y tiene todas
+    sus propiedades
+    """
+    
+    def __init__(self, name: str, mgr: object = None, account: tuple = None):
+        # TODO , server = None, port = None, uid = None):
+        super().__init__(name = account[0], password = account[1])
         self._badge = 0
+        self._channel = 0
+        self._currentaccount = account
+        self._currentname = account[0]
+        self._history = list()
+        self._mqueue = dict()
+        self._name = name
+        self._port = 1800  # TODO
+        self._rbuf = b''
+        self._server = getServer(name)  # TODO
+        self._silent = False
         self._time = None
+        self._user = None
+        self._userlist = list()
+        self.bmsg_array = list()
+        self.imsgs_drawn = 0
+        self.grouphistory = None
+        self.groupname = name
+        self.groupURL = name  # TODO
+        self.imsgs_rendered = False
+        self.imsg_array = list()
+        self.lastmsgnum = 0
+        self.msg_array = list()
+        self.mgr = mgr
+        self.msgs = dict()  # TODO Revisar utilidad y diferencia con el _history
+        self.ownername = ''
+        self.participants = list()
+        self.participants_number = list()
+        self.sellers_array = list()
+        self.status = None
+        self.usercount = 0
         if self.mgr:
             super().connect()
-        #    self._connect ( )
         self._maxHistoryLength = Gestor.maxHistoryLength  # Por que no guardar un número por sala ?)
         # TODO
-
+    
     ####
     # Propiedades
     ####
     def _getChannel(self):
         return self._channel
-
+    
     def _setChannel(self, c):
         self._channel = c
-
+    
     def _getBadge(self):
         return self._badge
-
+    
+    def _getUserlist(self, todos = 0, unica = 0, memoria = 0):
+        ul = None
+        if todos == 0:
+            ul = map(lambda x: x.user, self._history[-memoria:])
+        else:
+            ul = self._userlist
+        if unica:
+            return list(set(ul))
+        return ul
+    
     def _setBadge(self, c):
         self._badge = c
-
+    
     channel = property(_getChannel, _setChannel)
     badge = property(_getBadge, _setBadge)
-
-    ####
-    # Funciones
-    ####
+    
     ####
     # History
     ####
@@ -1049,17 +1057,18 @@ class Room(WSConnection):
         if len(self._history) > self._maxHistoryLength:
             rest, self._history = self._history[:-self._maxHistoryLength], self._history[
                                                                            -self._maxHistoryLength:]
-            for msg in rest: msg.detach()
-
+            for msg in rest:
+                msg.detach()
+    
     # noinspection PyShadowingNames
     def message(self, msg, html: bool = False, canal = None):
         """
         TODO revisar
-        Send a message. (Use "\n" for new line)
-        @param html: Si se habilitarán los carácteres html, en caso contrario se reemplazarán los carácteres especiales
+        send a message. (use "\n" for new line)
+        @param html: si se habilitarán los carácteres html, en caso contrario se reemplazarán los carácteres especiales
         @type msg: str
         @param msg: message
-        @param canal: El número del canal. Del 0 al 4 son Normal,Rojo,Azul,Azul+Rojo,Mod
+        @param canal: el número del canal. del 0 al 4 son normal,rojo,azul,azul+rojo,mod
         """
         if canal is None:
             canal = self.channel
@@ -1069,7 +1078,7 @@ class Room(WSConnection):
             canal = 32768
         if msg is None:
             return
-        msg = msg.rstrip()
+        msg = msg.rstrip().replace('\n', '\r')
         if not html:
             msg = msg.replace("<", "&lt;").replace(">", "&gt;")
         if len(msg) > self.mgr._maxLength:
@@ -1091,11 +1100,17 @@ class Room(WSConnection):
 
         msg.replace("~", "&#126;")
         self.rawMessage('%s:%s' % (canal + self.badge * 64, msg))
-
+    
     @staticmethod
-    def getAnonName(num, ts):
+    def getAnonName(num: str, ts: str):
+        """
+        Obtener el nombre de anon para una sesión
+        @param num: El número de la sesión
+        @param ts: El tiempo de la conexión
+        @return:  anon####
+        """
         return 'anon' + _getAnonId(num, ts)
-
+    
     def _login(self, uname = None, password = None):  # TODO, Name y password no shilven
         """
         Autenticar. Logearse como uname con password. En caso de no haber ninguno usa la _currentaccount
@@ -1106,11 +1121,13 @@ class Room(WSConnection):
         __reg2 = ["bauth", self.groupURL, _genUid(), self._currentaccount[0], self._currentaccount[1]]  # TODO comando
         self._currenname = self._currentaccount[0]
         self._sendCommand(*__reg2)
-
+    
     def closeHistory(self):
+        """Cerrar el historial"""
+        # TODO esto no sirve
         if self.grouphistory:
             self.grouphistory.visible = False
-
+    
     def rawMessage(self, msg):
         """
         Send a message without n and f tags.
@@ -1119,18 +1136,17 @@ class Room(WSConnection):
         """
         if not self._silent:
             self._sendCommand("bm", "meme", msg)
-
-    def ping(self):
-        """Send a ping.TODO"""
-        self._sendCommand("")
-        self._callEvent("onPing")
-        pass
-
-    def reconnect(self):
-        self._callEvent('onReconnect')
-        self._reconnect()
-
+    
+    def setBgMode(self, modo):
+        self._bgmode = modo
+        # self._sendCommand('msgbg',str(modo))
+    
+    def setRecordingMode(self, modo):
+        self._recording = modo
+        # self._sendCommand('msgmedia',str(modo))
+    
     def reset(self):
+        """Reiniciar todos los valores por defecto no confundir con _reset"""
         # TODO
         # self._clearmessages()
         # self.groupchat_mc.messages_mc.h = 0
@@ -1143,14 +1159,14 @@ class Room(WSConnection):
         # group_classes.PremiumStatus.getInstance().reset()
         # group_classes.BannedWords.getInstance().clearRequests()
         # _root.chatango_msg.removeMovieClip()
-
+    
     def _rcmd_b(self, args):  # TODO
         mtime = float(args[0])  # Hora de envío del mensaje
         name = args[1]  # Nombre de usuario si lo hay
         tempname = args[2]  # Nombre del anon si no se ha logeado
         puid = args[3]  # Id del usuario
         msgid = args[4]  # Id del mensaje
-        unknown2 = args[5]
+        msgnum = args[5]
         ip = args[6]  # Ip del usuario
         channel = args[7] or 0
         badge = 0
@@ -1185,34 +1201,33 @@ class Room(WSConnection):
                 nameColor = None
         i = args[5]
         unid = args[4]
-        user = User(name, ip = ip)  # ,nameColor=nameColor,
-        #fontColor=fontColor)
-        # Create an anonymous message and queue it because msgid is unknown.
+        user = User(name, ip = ip)
         if f:
             fontSize, fontColor, fontFace = _parseFont(f.strip())
-            print(_parseFont(f.strip()))
         else:
             fontColor, fontFace, fontSize = None, None, None
-        msg = Message(time = mtime,
-                      user = user,
+        msg = Message(badge = badge,
                       body = body,
-                      raw = rawmsg,
-                      ip = ip,
-                      nameColor = nameColor,
+                      channel = channel,
                       fontColor = fontColor,
                       fontFace = fontFace,
                       fontSize = fontSize or '11',
-                      unid = unid,
+                      mnum = msgnum,
+                      ip = ip,
+                      msgid = msgid,
+                      nameColor = nameColor,
                       puid = puid,
+                      raw = rawmsg,
                       room = self,
-                      channel = channel,
-                      badge = badge,
-                      msgid = msgid)
+                      time = mtime,
+                      unid = unid,
+                      user = user
+                      )
         self._mqueue[i] = msg
-
+    
     def _rcmd_g_participants(self, args):
         self.participants = list()
-        self.sellers_array = list()
+        self._userlist = list()
         self.participants_number = 0
         args = ':'.join(args).split(";")
         for data in args:
@@ -1225,36 +1240,36 @@ class Room(WSConnection):
             user = User(name, room = self)
             user.addSessionId(self, data[0])
             self.participants.append(user)
-            self.sellers_array.append(user)
-
+            self._userlist.append(user)
+    
     def _rcmd_gparticipants(self, args):
         self._rcmd_gparticipants(args)
         pass
-
+    
     def _rcmd_getpremium(self, args):
         # TODO
         self.mgr.setPremium(args)
-
+    
     def _rcmd_i(self, args):  # TODO
         pass
-
+    
     def _rcmd_inited(self, args):  # TODO
         """Em el chat es solo para desactivar la animación de espera por conexión"""
         self._sendCommand("g_participants", "start")
         self._sendCommand("getpremium", "l")
         if args and debug:
             print('New Unhandled arg on inited ', file = sys.stderr)
-        if self.connectattempts <= 5:
+        if self.attempts == 1:
             self._callEvent("onConnect")
             # TODO
         else:
             self._callEvent("onReconnect")
             # TODO
         pass
-
+    
     def _rcmd_n(self, args):  # TODO
         pass
-
+    
     def _rcmd_ok(self, args):
         self._connected = True
         self.ownername = args[0]
@@ -1265,19 +1280,24 @@ class Room(WSConnection):
         self._currentIP = args[5]
         self._modsServer = args[6]  # TODO Lista de mods name:number;name,number
         self._flagsdelgrupo = args[7]
-        self._pingTask = self.mgr.setInterval(self.mgr._pingDelay, self.ping)
+        self._pingTask = self.mgr.setInterval(self._pingInterval, self.ping)
+        self._user = User(self._currentname)
         # TODO
         pass
-
+    
+    def _rcmd_participant(self, args):
+        """Recibe un cambio en la lista de participantes de la sala"""
+        pass
+    
     def _rcmd_u(self, args):
         temp = Struct(**self._mqueue)
         if hasattr(temp, args[0]):
             msg = getattr(temp, args[0])
             if msg._user != self.user:
-                msg._user._fontColor = msg.fontColor
-                msg._user._fontFace = msg.fontFace
-                msg._user._fontSize = msg.fontSize
-                msg._user._nameColor = msg.nameColor
+                msg.user._fontColor = msg.fontColor
+                msg.user._fontFace = msg.fontFace
+                msg.user._fontSize = msg.fontSize
+                msg.user._nameColor = msg.nameColor
             del self._mqueue[args[0]]
             msg.attach(self, args[1])
             self._addHistory(msg)
@@ -1285,45 +1305,59 @@ class Room(WSConnection):
 
 
 class Gestor:
+    """
+    Clase Base para manejar las demás conexiones
+    """
     _TimerResolution = 0.2
     maxHistoryLength = 700
     _maxLength = 1800
     _pingDelay = 90  # 20
     PMHost = "c1.chatango.com"
-
+    
     def __init__(self, name = None, password = None, pm = None, accounts = None):
         self._accounts = accounts
         if self._accounts is None:
             self._accounts = [(name, password)]
         self._name = self._accounts[0][0]
         self._password = self._accounts[0][1]
-        self.pm = pm
         self._rooms = dict()
-        self._rooms_queue = queue.Queue()
-        self._rooms_lock = threading.Lock()
         self._running = False
+        self._user = User(self._name)
         self._tasks = set()
+        self._pm = None
         if pm:
             self._pm = PM(mgr = self, name = name, password = password)
-
+    
     ####
     # Propiedades
     ####
-    def _getName(self):
+    @property
+    def name(self):
         return self._name
-
-    def _getPassword(self):
+    
+    @property
+    def password(self):
         return self._password
-
-    def _getUser(self):
-        return User(self._name)
-
-    name = property(_getName)
-    password = property(_getPassword)
-    user = property(_getUser)
-
+    
+    @property
+    def user(self):
+        return self._user
+    
+    @property
+    def rooms(self):
+        return self._rooms
+    
     @classmethod
-    def easy_start(cls, rooms = None, name = None, password = None, pm = True, accounts = None):
+    def easy_start(cls, rooms: list = None, name: str = None, password: str = None, pm: bool = True,
+                   accounts: [(str, str), (str, str), ...] = None):
+        """
+        Inicio rápido del bot y puesta en marcha
+        @param rooms: Una lista de sslas
+        @param name: Nombre de usuario
+        @param password: Clave de conexión
+        @param pm: Si se usará el PM o no
+        @param accounts: Una lista/tupla de cuentas ((clave,usuario),(clave,usuario))
+        """
         # if not rooms:
         #    rooms = str(input('Nombres de salas separados por coma: ')).split(';')
         # if '' in rooms:
@@ -1337,30 +1371,34 @@ class Gestor:
         self = cls(name, password, pm, accounts)
         for room in rooms:
             self.joinRoom(room)
-
+    
         self.main()
-
+    
     def onInit(self):
+        """Invocado antes de empezar los demás procesos en main"""
         pass
-
+    
     class _Task:
         def __init__(self, mgr):
             """
             Inicia una tarea nueva
-            :param mgr: El dueño de esta tarea y el que la mantiene con vida
+            @param mgr: El dueño de esta tarea y el que la mantiene con vida
             """
             self.mgr = mgr
 
         def cancel(self):
             """Sugar for removeTask."""
             self.mgr.removeTask(self)
-
+    
     def getConnections(self):
+        """
+        Regresa una lista de las conexiones existentes
+        """
         li = list(self._rooms.values())
         if self._pm:
             li.append(self._pm)
-        return [c for c in li if c._sock is not None]
-
+        return [c for c in li if c.sock is not None]
+    
     def getRoom(self, room: str) -> Room:
         """
         @type room: str
@@ -1372,7 +1410,7 @@ class Gestor:
             return self._rooms[room]
         else:
             return Room("", self)  # TODO
-
+    
     def joinRoom(self, room: str, account = None):
         """
         Unirse a una sala con la cuenta indicada
@@ -1389,40 +1427,89 @@ class Gestor:
         else:
             return None
         pass
-
+    
     def main(self):
+        """
+        Poner en marcha al bot
         # TODO
+        """
         self.onInit()
         self._running = True
+        counter = 0
         while self._running:
-            try:
+            # try:
+            if self._running:
                 conns = self.getConnections()
-                # if not conns:
-                #    self._running = False
-                socks = [x._sock for x in conns]
-                wsocks = [x._sock for x in conns if x._wbuf]
+                socks = [x.sock for x in conns]
+                wsocks = [x.sock for x in conns if x.wbuf]
                 rd, wr, sp = select.select(socks, wsocks, socks, self._TimerResolution)
                 for sock in wr:  # Enviar
+                    con = [x for x in conns if x.sock == sock][0]
+                    size = sock.send(con.wbuf)
+                    con._wbuf = con.wbuf[size:]
+                for sock in rd:  # Recibir
                     try:
                         con = [x for x in conns if x.sock == sock][0]
-                        size = sock.send(con._wbuf)
-                        con._wbuf = con._wbuf[size:]
-                    except Exception as e:
-                        print("error al enviar" + str(e), sys.stderr)
-                        ##
-                for sock in rd:  # Recibir
-                    con = [x for x in conns if x.sock == sock][0]
-                    chunk = sock.recv(1024)
-                    if chunk:  # TODO
-                        con.onData(chunk)
-                    else:
-                        print("RECIBIDO ALGO VACIO")
-                    #   pass  # con.disconnect()#.disconnect()#con.reconnect()
-            except Exception as e:
-                print("error en main " + str(e), file = sys.stderr)
-                # raise e
+                        chunk = sock.recv(1024)
+                        if chunk:  # TODO
+                            con.onData(chunk)
+                        else:
+                            print("{}: Fallo de envío, desconectando...".format(con.name))  # con.reconnect()  #
+                            # Conexión perdida
+                            con.disconnect()
+                            # TODO ConnectionRefusedError
+                    except ConnectionResetError:
+                        print('Conexión perdida, reintentando en 10 segundos...')
+                        counter = con.attempts or 1
+                        while counter:
+                            try:
+                                time.sleep(10)
+                                con.reconnect()
+                                counter = 0
+                            except socket.gaierror as e:  # En caso de que no haya internet
+                                print(
+                                        '[{}][{:^5}] Aún no hay internet...'.format(time.strftime('%I:%M:%S %p'),
+                                                                                    counter),
+                                        file = sys.stderr)
+                                counter += 1
+            # except ConnectionResetError as e:
+            #    time.sleep(5)
+    
+            # except Exception as e:
+            #    print("error en main " + str(e), file = sys.stderr)
+            # raise e
             self._tick()
-
+    
+    def removeTask(self, task):
+        if task in self._tasks:
+            self._tasks.remove(task)
+    
+    def enableBg(self, activo = True):
+        """Enable background if available."""
+        self.user._mbg = True
+        for room in self.rooms:
+            self.getRoom(room).setBgMode(1)
+    
+    def enableRecording(self):
+        """Enable recording if available."""
+        self.user._mrec = True
+        for room in self.rooms:
+            self.getRoom(room).setRecordingMode(1)
+    
+    def setFontColor(self, hexfont):
+        self.user._fontColor = hexfont
+    
+    def setFontFace(self, facenum):
+        """
+        # TODO usar el nombre
+        @param facenum: El número de la fuente
+        """
+        
+        self.user._fontFace = facenum
+    
+    def setFontSize(self, sizenum):
+        self.user._fontSize = sizenum
+    
     def setInterval(self, intervalo, funcion, *args, **kwargs):
         """
         Llama a una función cada intervalo con los argumentos indicados
@@ -1441,11 +1528,20 @@ class Gestor:
         task.kw = kwargs
         self._tasks.add(task)
         return task
-
+    
+    def setNameColor(self, hexcolor):
+        self.user._nameColor = hexcolor
+        # for x in self._rooms: TODO
+        #    x.user.setnameColor(hexcolor)
+    
     def setPremium(self, args):
+        """
         # TODO detectar el estado de mi cuenta
+        @param args:
+        @return:
+        """
         pass
-
+    
     def _tick(self):
         now = time.time()
         # print(time.time())
@@ -1460,20 +1556,21 @@ class Gestor:
             except Exception as e:
                 print('Task error {}: {}'.format(task.func, e))
                 task.cancel()
-
-    @staticmethod
-    def _write(room, data):
-        # Todo Eliminar, esto no sirve
-        room._write(data)
-
-        # room._wbuf += data
-
+    
     def onConnect(self, room):
+        """
+        Al conectarse a una sala
+        @param room:Sala a la que se ha conectado
+        """
         pass
-
+    
     def onDisconnect(self, room):
+        """
+        Al desconectarse de una sala
+        @param room: Sala en la que se ha perdido la conexión
+        """
         pass
-
+    
     def onEventCalled(self, room, evt, *args, **kw):
         """
         Called on every room-based event.
@@ -1483,34 +1580,61 @@ class Gestor:
         @param evt: the event
         """
         pass
-
-    def onMessage(self, room, user, message):
+    
+    def onMessage(self, room: Room, user: _User, message: Message):
+        """
+        Al recibir un mensaje en una sala
+        @param room: Sala en la que se ha recibido el mensaje
+        @param user: Usuario que ha enviado (_User)
+        @param message: El mensaje enviado (Message)
+        @return:
+        """
         pass
-
-    def onPMConnect(self, pm):
+    
+    def onPMConnect(self, pm: PM):
+        """
+        Al conectarse a la mensajería privada
+        @param pm: El PM
+        """
         pass
-
-    def onPMPing(self, pm):
+    
+    def onPMPing(self, pm: PM):
+        """
+        Al enviar un ping al pm
+        @param pm:  El PM
+        """
         pass
-
-    def onPing(self, room):
+    
+    def onPing(self, room: Room):
+        """
+        Al enviar un ping a una sala
+        @param room: La sala en la que se envía el ping
+        """
         pass
-
-    def onPong(self, room, pong):
+    
+    def onPong(self, room: Room, pong):
+        """
+        Al recibir un pong en una sala
+        @param room: La sala en la que se recibe el pong
+        @param pong: El pong recibido, por si acaso alguna vez tiene información
+        """
         pass
-
+    
     def onRaw(self, room, raw):
         """
-        Called before any command parsing occurs.
+        ANtes de ejecutar la lectura de cualquier comando
         @type room: Room
-        @param room: room where the event occured
+        @param room: La sala donde ocurre el evento
         @type raw: str
-        @param raw: raw command data
+        @param raw: Los datos "crudos"
         """
         pass
-
-    def onReconnect(self, room):  # TODO
-
+    
+    def onReconnect(self, room):
+        """
+        Al reconectarse a una sala
+        @param room: Sala en la que se ha reconectado
+        """
         pass
 
 
