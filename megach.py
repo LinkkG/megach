@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.7
+Version: M1.7.1
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -43,7 +43,7 @@ Megamaster12 changelog
 # Imports
 ################################################################
 import base64
-import collections
+from collections import namedtuple, deque
 import hashlib
 import html as HTML
 import os
@@ -257,7 +257,7 @@ class WS:
     Agrupamiento de métodos estáticos para encodear y chequear frames en conexiones del protocolo WebSocket
     """
     # TODO revisar
-    FrameInfo = collections.namedtuple("FrameInfo", ["fin", "opcode", "masked", "payload_length"])
+    FrameInfo = namedtuple("FrameInfo", ["fin", "opcode", "masked", "payload_length"])
     CONTINUATION = 0
     TEXT = 1
     BINARY = 2
@@ -549,6 +549,7 @@ class _User:
         if room not in self._puids:
             self._puids[room] = set()
         self._puids[room].add(puid)
+
 
 class Message:
     """
@@ -1064,8 +1065,6 @@ class PM(WSConnection):
         else:
             return self._status[user][2]
 
-        #
-
     def message(self, user, msg, html: bool = False):
         """
         Enviar un pm a un usuario
@@ -1154,9 +1153,6 @@ class PM(WSConnection):
                 self._status[user] = [int(last_on), True, time.time() - int(idle) * 60]
             self._contacts.add(user)
         self._callEvent("onPMContactlistReceive")
-        # wl: dryu435:1490304518: off:0: rorymercury797:1529155103: off:0: wirkleon:1493068854: off:0:
-        # megamasterl2:1529213296: off:0: roxvent:1529186253: off:0: amamiranta:1527648661: off:0:
-        # megamaster12:1529206134: on:0: edxagon2:1529212691: off:0: chesusk:1529211487: off:0
 
     def _rcmd_wloffline(self, args):  # TODO
         user = User(args[0])
@@ -1179,6 +1175,7 @@ class Room(WSConnection):
     
     def __init__(self, name: str, mgr: object = None, account: tuple = None):
         # TODO , server = None, port = None, uid = None):
+        # TODO not account start anon
         super().__init__(name = account[0], password = account[1])
         self._badge = 0
         self._channel = 0
@@ -1197,8 +1194,9 @@ class Room(WSConnection):
         self._time = None
         self._owner = None
         self._user = None
-        self._userdict = dict()  # TODO {ssid:{user,user,user},ssid}
-        self._userhistory = list()  # TODO reemplazaer por queue de collections
+        self._users = deque()  # TODO reemplazar userlist con userdict y userhistory
+        self._userdict = dict()  # TODO {ssid:{user},}
+        self._userhistory = deque(maxlen = 10)  # TODO {{time: <user>},}
         self.user_id = None
         self._userCount = 0
         self._userlist = list()
@@ -1223,6 +1221,16 @@ class Room(WSConnection):
     ####
     # Propiedades
     ####
+    @property
+    def allshownames(self):
+        return [x.showname for x in set(self._userdict.values())]
+
+    def alluserlist(self):
+        return self._userdict.values()
+
+    def allusernames(self):
+        return [x.username for x in set(self._userdict.values())]
+    
     @property
     def badge(self):
         return self._badge
@@ -1308,6 +1316,11 @@ class Room(WSConnection):
     def usernames(self):
         return list(set([x.name for x in self.userlist]))
 
+    @property
+    def userhistory(self):
+        # TODO regresar solo la ultima sesión para cada usuario
+        return self._userhistory
+    
     def _addHistory(self, msg):
         """
         Agregar un mensaje al historial
@@ -1321,8 +1334,8 @@ class Room(WSConnection):
                 msg.detach()
 
     def _getUserlist(self, todos = 0, unica = 0, memoria = 0):  # TODO Revisar
-        ul = None
-        if todos == 0:
+        ul = None  # TODO Si hay flag de usuarios invisibles usar el history
+        if not todos:
             ul = map(lambda x: x.user, self._history[-memoria:])
         else:
             ul = self._userlist
@@ -1534,22 +1547,20 @@ class Room(WSConnection):
         pass
     
     def _rcmd_g_participants(self, args):
-        self.participants = list()  # TODO
+        self._userdict = dict()
         self._userlist = list()
-        self.participants_number = 0
         args = ':'.join(args).split(";")
         for data in args:
-            self.participants_number += 1  # TODO ELIMINAR VARIABLE
             data = data.split(':')  # Lista de un solo usuario
-            ssid = data[0]  # TODO esto es util?
-            contime = data[1]  # TODO la hora de conexión a la sala
-            puid = data[2]  # Id de la conexión TODO comprobar
+            ssid = data[0]  # Id de la sesión
+            contime = data[1]  # Hora de conexión a la sala
+            puid = data[2]  # Id de la conexión (en la sala)
             name = data[3]  # Nombre de usuario registrado
             tname = data[4]  # Nombre temporal
-            isanon = False
+            isanon = False  # TODO externalizar esta parte
             if name == 'None':
                 isanon = True
-                if tname:
+                if tname != 'None':
                     name = '#' + tname
                 else:
                     name = '!' + getanonname(contime.split('.')[0], puid)
@@ -1557,7 +1568,7 @@ class Room(WSConnection):
             if user in ({self._owner} | self._mods):
                 user.setName(name)
             user.addSessionId(self, ssid)
-            self.participants.append(user)
+            self._userdict[ssid] = user
             if not isanon:
                 self._userlist.append(user)
     
@@ -1607,9 +1618,7 @@ class Room(WSConnection):
     def _rcmd_n(self, args):  # TODO
         """Cambió la cantidad de usuarios en la sala"""
         self._userCount = int(args[0], 16)
-        if len(self.participants) != self._userCount:  # Si el conteo salió mal, solicitar la lista completa
-            pass
-            #self._sendCommand("gparticipants")
+        assert self._userdict and len(self._userdict) == self._userCount, 'Warning count doesnt match'  # TODO
         self._callEvent("onUserCountChange")
 
     def _rcmd_ok(self, args):  # TODO
@@ -1628,20 +1637,22 @@ class Room(WSConnection):
             # TODO revisar todo esto
             pass
 
-    def _rcmd_participant(self, args):  # TODO
+    def _rcmd_participant(self, args):
+        """
+        Cambio en la lista de participantes
+        TODO _historysessions a un usuario para saber quien es
+        """
         cambio = args[0]  # Leave Join Change
-        ssid = args[1]  # Session ID, cambia por sesión TODO
-        puid = args[2]  # Personal User ID TODO
+        ssid = args[1]  # Session ID, cambia por sesión (o pestaña del navegador).
+        puid = args[2]  # Personal User ID (en la sala)
         name = args[3]  # Visible Name
-        unknown3 = args[4]  #
-        tname = args[5]  #
-        contime = args[6]  #
-        # TODO comprobación anon
-    
+        tname = args[4]  # Anon Name
+        unknown = args[5]  #
+        contime = args[6]  # Hora del cambio
         isanon = False  # TODO externalizar esta parte
         if name == 'None':
             isanon = True
-            if tname:
+            if tname != 'None':
                 name = '#' + tname
             else:
                 name = '!' + getanonname(contime.split('.')[0], puid)
@@ -1649,51 +1660,38 @@ class Room(WSConnection):
         user = User(name, puid = puid, isanon = isanon)
         if cambio == 'O':  # Leave
             user.removeSessionId(self, ssid)  # Quitar la id de sesión activa
-            if user in self._userlist:  # Remover el usuario de la sala
-                self._userhistory.append(user)
+            if ssid in self._userdict:  # Remover el usuario de la sala
+                self._userhistory.append([contime, self._userdict.pop(ssid)])
+            if user.isanon:
+                self._callEvent('onAnonLeave', user, puid)
+            elif user in self._userlist:
                 self._userlist.remove(user)
-            if user not in self._userlist:
-                if name[0] in "#!":
-                    self._callEvent('onAnonLeave')
-                else:
-                    self._callEvent('onLeave', user, puid)
-            # TODO remover anon de participants
-        elif cambio == '1':
-            user.addSessionId(self, ssid)
-            if user not in self._userlist:
+                self._callEvent('onLeave', user, puid)
+        elif cambio == '1':  # Join
+            user.addSessionId(self, ssid)  # Agregar la sesión al usuario
+            self._userdict[ssid] = user  # Agregar la sesión a la sala
+            if not user.isanon and user not in self._userlist:
+                self._callEvent('onJoin', user, puid)
                 self._userlist.append(user)
-                if user not in self.participants:
-                    self.participants.append(user)
-                if name[0] in "#!":
-                    self._callEvent('onAnonJoin', user, puid)
-                else:
-                    self._callEvent('onJoin', user, puid)
-        
-            # TODO añadir user y anon a los participantes
-        else:  # 2 TODO Change account onUserChange
-            # Encontrar el usuario anterior y eliminarlo
-            before = [x for x in self.participants if ssid in x.sessionids]
-            if before:
-                before = before[0]
-                if before.isanon:
-                    if user.isanon:
-                        self._callEvent('onAnonLogin', user, puid)
+            elif user.isanon:
+                self._callEvent('onAnonJoin', user, puid)
+        else:  # 2 Account Change
+            before = None
+            if ssid in self._userdict:
+                before = self._userdict[ssid]
+            if before and before.isanon:  # Login
+                if user.isanon:  # Anon Login
+                    self._callEvent('onAnonLogin', user, puid)  # TODO
+                else:  # User Login
                     self._userlist.append(user)
-                    self.participants.remove(user)
-                    self._callEvent('onLogin', user, puid)
-                else:
-                
+                    self._callEvent('onUserLogin', user, puid)
+            elif not before.isanon:  # Logout
+                if before in self._userlist:
                     self._userlist.remove(before)
-                    self.participants.remove(before)
                     self._userhistory.append(before)
-                    self._callEvent('onLogout', user, puid)
-            else:
-                self._sendCommand("gparticipants")  # If error get all again
-            # El usuario ha cambiado su nombre. Login or Logout
-            # for x in user.sessionids  self._userlist
-        
-            pass
-
+                    self._callEvent('onUserLogout', user, puid)
+            self._userdict[ssid] = user
+    
     def _rcmd_premium(self, args):  # TODO
         pass
 
@@ -2066,6 +2064,7 @@ class Gestor:
 
     def onAnonLogin(self, room, user, ssid):
         pass
+
     def onConnect(self, room):
         """
         Al conectarse a una sala
@@ -2096,9 +2095,6 @@ class Gestor:
     def onLeave(self, room, user, ssid):
         pass
 
-    def onLogin(self, room, user, ssid):
-        pass
-
     def onLoginFail(self, room):
         """
         Al fracasar un intento de acceso
@@ -2109,6 +2105,7 @@ class Gestor:
 
     def onLogout(self, room, user, ssid):
         pass
+
     def onMessage(self, room: Room, user: _User, message: Message):
         """
         Al recibir un mensaje en una sala
@@ -2192,6 +2189,12 @@ class Gestor:
         Al cambiar la cantidad de usuarios en una sala
         @param room: Sala en la que cambió la cantidad de usuarios
         """
+        pass
+
+    def onUserLogin(self, room, user, puid):
+        pass
+
+    def onUserLogout(self, room, user, puid):
         pass
 
 
