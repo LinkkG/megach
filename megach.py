@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.7.1
+Version: M1.7.2
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -550,6 +550,11 @@ class _User:
             self._puids[room] = set()
         self._puids[room].add(puid)
 
+    def removeSessionId(self, room, sid):
+        if room in self._sids:
+            self._sids[room].remove(sid)
+            if len(self._sids[room]) == 0:
+                del self._sids[room]
 
 class Message:
     """
@@ -1225,9 +1230,11 @@ class Room(WSConnection):
     def allshownames(self):
         return [x.showname for x in set(self._userdict.values())]
 
+    @property
     def alluserlist(self):
-        return self._userdict.values()
+        return list(self._userdict.values())
 
+    @property
     def allusernames(self):
         return [x.username for x in set(self._userdict.values())]
     
@@ -1658,15 +1665,15 @@ class Room(WSConnection):
                 name = '!' + getanonname(contime.split('.')[0], puid)
         #    return
         user = User(name, puid = puid, isanon = isanon)
-        if cambio == 'O':  # Leave
+        if cambio == '0':  # Leave
             user.removeSessionId(self, ssid)  # Quitar la id de sesión activa
+            if user in self._userlist:
+                self._userlist.remove(user)
+                self._callEvent('onLeave', user, puid)
             if ssid in self._userdict:  # Remover el usuario de la sala
                 self._userhistory.append([contime, self._userdict.pop(ssid)])
             if user.isanon:
                 self._callEvent('onAnonLeave', user, puid)
-            elif user in self._userlist:
-                self._userlist.remove(user)
-                self._callEvent('onLeave', user, puid)
         elif cambio == '1':  # Join
             user.addSessionId(self, ssid)  # Agregar la sesión al usuario
             self._userdict[ssid] = user  # Agregar la sesión a la sala
@@ -1688,7 +1695,7 @@ class Room(WSConnection):
             elif not before.isanon:  # Logout
                 if before in self._userlist:
                     self._userlist.remove(before)
-                    self._userhistory.append(before)
+                    self._userhistory.append([contime, before])
                     self._callEvent('onUserLogout', user, puid)
             self._userdict[ssid] = user
     
