@@ -62,7 +62,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 debug = False
 ################################################################
-# Cosas del servidor y las cuentas
+# Cosas del servidor, las cuentas y el manejo de mods
 ################################################################
 w12 = 75
 sv2 = 95
@@ -88,6 +88,33 @@ tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
 _maxServernum = sum(map(lambda x: x[1], tsweights))
 
 _users = dict()
+
+
+class GroupFlags:
+    __dict__ = {
+        "LIST_TAXONOMY":     1,
+        "NOANONS":           4, "NOFLAGGING": 8, "NOCOUNTER": 16, "NOIMAGES": 32, "NOLINKS": 64, "NOVIDEOS": 128,
+        "NOSTYLEDTEXT":      256, "NOLINKSCHATANGO": 512, "NOBRDCASTMSGWITHBW": 1024, "RATELIMITREGIMEON": 2048,
+        "CHANNELSDISABLED":  8192, "NLP_SINGLEMSG": 16384, "NLP_MSGQUEUE": 32768, "BROADCAST_MODE": 65536,
+        "CLOSED_IF_NO_MODS": 131072, "IS_CLOSED": 262144, "SHOW_MOD_ICONS": 524288, "MODS_CHOOSE_VISIBLITY": 1048576,
+        "HAS_XML":           268435456, "UNSAFE": 536870912
+        }
+
+
+ModFlags = {
+    'DELETED':             1, 'EDIT_MODS': 2,
+    'EDIT_MOD_VISIBILITY': 4, 'EDIT_BW': 8,
+    'EDIT_RESTRICTIONS':   16, 'EDIT_GROUP': 32,
+    'SEE_COUNTER':         64, 'SEE_MOD_CHANNEL': 128,
+    'SEE_MOD_ACTIONS':     256, 'EDIT_NLP': 512,
+    'EDIT_GP_ANNC':        1024, 'EDIT_ADMINS': 2048,
+    'EDIT_SUPERMODS':      4096, 'NO_SENDING_LIMITATIONS': 8192,
+    'SEE_IPS':             16384, 'CLOSE_GROUP': 32768,
+    'CAN_BROADCAST':       65536, 'MOD_ICON_VISIBLE': 131072,
+    'IS_STAFF':            262144
+    }
+
+AdminFlags = ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] | ModFlags["EDIT_GROUP"] | ModFlags["EDIT_GP_ANNC"]
 
 
 def _getAnonId(num, ts) -> str:
@@ -247,7 +274,6 @@ class Struct:
     """
     Una clase dinámica que recibe sus propiedades como parámetros
     """
-
     def __init__(self, **entries):
         self.__dict__.update(entries)
 
@@ -555,6 +581,7 @@ class _User:
             self._sids[room].remove(sid)
             if len(self._sids[room]) == 0:
                 del self._sids[room]
+
 
 class Message:
     """
@@ -1110,7 +1137,7 @@ class PM(WSConnection):
                 continue
             self._blocklist.add(User(name))
 
-    def _rcmd_DENIED(self, args):
+    def _rcmd_DENIED(self, args):  # TODO
         self._disconnect()
         self._callEvent("onLoginFail")
 
@@ -1188,7 +1215,7 @@ class Room(WSConnection):
         self._currentname = account[0]
         self._history = list()
         self._mqueue = dict()
-        self._mods = set()
+        self._mods = dict()
         self._msgs = dict()
         self._name = name
         self._port = 1800  # TODO
@@ -1271,8 +1298,12 @@ class Room(WSConnection):
     @property
     def mods(self):
         """Los mods de la sala"""
-        return self._mods
+        return set(self._mods.keys())
 
+    @property
+    def modflags(self):
+        return dict([(user.name, self._mods[user]) for user in self._mods])
+    
     @property
     def modnames(self):
         return [x.name for x in self.mods]
@@ -1349,10 +1380,57 @@ class Room(WSConnection):
         if unica:
             return list(set(ul))
         return ul
+
+    ###
+    # Mods
+    ###
+    def addMod(self, user, powers = '82368'):  # TODO
+        if isinstance(user, _User):
+            user = user.name
+        self._sendCommand('addmod:{}:{}'.format(user, powers))
+
+    def clearall(self):  # TODO
+        """Norra todos los mensajes"""
+        if self.user == self._owner or self._user in self._mods and self._mods.get(self._user).EDIT_GROUP:
+            self._sendCommand("clearall")
+            return True
+        else:
+            return False
+
+    def getLastMessage(self, user = None):
+        """Obtener el último mensaje de un usuario en una sala"""
+        if not user:
+            user = self._user
+        if isinstance(user, str):
+            user = User(user)
+        msg = [msg for msg in self._history[::-1] if msg.user == user]
+        if msg:
+            return msg[0]
+        return None
+
+    def getLevel(self, user):
+        """Obtener el nivel de un usuario en la sala"""
+        if isinstance(user, str):
+            user = User(user)
+        if user == self._owner:
+            return 3
+        if user in self._mods:
+            if self._mods.get(user).isadmin:
+                return 2
+            else:
+                return 1
+        return 0
+
+    def removeMod(self, user, powers):  # TODO
+        if isinstance(user, _User):
+            user = user.name
+        self._sendCommand('removemod:{}', user)
+
+    def updateMod(self, user, powers = '82368'):  # TODO
+        if isinstance(user, _User):
+            user = user.name
+        self._sendCommand('updmod:{}:{}'.format(user, powers))
     
-    ####
-    # Comandos
-    ####
     def logout(self):  # TODO ordenar
         """logout of user in a room"""
         self._sendCommand("blogout")
@@ -1535,6 +1613,9 @@ class Room(WSConnection):
                 }
         self._callEvent("onBanlistUpdate")
 
+    def _rcmd_clearall(self, args):
+        self._callEvent("onClearall")
+    
     def _rcmd_delete(self, args):
         """Borrar un mensaje de mi vista actual"""
         msg = self._msgs.get(args[0])
@@ -1572,7 +1653,7 @@ class Room(WSConnection):
                 else:
                     name = '!' + getanonname(contime.split('.')[0], puid)
             user = User(name, room = self, isanon = isanon, puid = puid)
-            if user in ({self._owner} | self._mods):
+            if user in ({self._owner} | self.mods):
                 user.setName(name)
             user.addSessionId(self, ssid)
             self._userdict[ssid] = user
@@ -1589,6 +1670,7 @@ class Room(WSConnection):
         self._sendCommand('msgbg', str(self._bgmode))
     
     def _rcmd_i(self, args):  # TODO
+    
         pass
     
     def _rcmd_inited(self, args):  # TODO
@@ -1611,21 +1693,26 @@ class Room(WSConnection):
         self._currentname = getanonname(self._servertime.split('.'), self.user_id)
     
     def _rcmd_mods(self, args):  # TODO
-        modnames = args
-        mods = set(map(lambda x: User(x.split(",")[0]), modnames))
-        premods = self._mods
-        for user in mods - premods:  # modded
-            self._mods.add(user)
-            self._callEvent("onModAdd", user)
-        for user in premods - mods:  # demodded
-            self._mods.remove(user)
-            self._callEvent("onModRemove", user)
-        self._callEvent("onModChange")
+        mods = dict()
+        for mod in args:
+            name, powers = mod.split(',', 1)
+            powers = int(powers)
+            mods[User(name)] = Struct(**dict([(mf, ModFlags[mf] & powers != 0) for mf in ModFlags] + [
+                ('isadmin', int(powers) & AdminFlags != 0)]))  # + ))
+        premods = self.mods
+        self._mods = mods
+        if self._user not in premods:  # Si el bot no estaba en los mods antes
+            self._callEvent('onModChange', mods - premods)
+        else:
+            for user in set(mods.keys()) - premods:  # Con Mod
+                self._callEvent("onModAdd", user)
+            for user in premods - set(mods.keys()):  # Sin Mod
+                self._callEvent("onModRemove", user)
     
     def _rcmd_n(self, args):  # TODO
         """Cambió la cantidad de usuarios en la sala"""
         self._userCount = int(args[0], 16)
-        assert self._userdict and len(self._userdict) == self._userCount, 'Warning count doesnt match'  # TODO
+        assert not self._userdict or len(self._userdict) == self._userCount, 'Warning count doesnt match'  # TODO
         self._callEvent("onUserCountChange")
 
     def _rcmd_ok(self, args):  # TODO
@@ -1637,9 +1724,13 @@ class Room(WSConnection):
         self._currentname = args[3]
         self._servertime = args[4]
         self._currentIP = args[5]
-        self._modsServer = args[6]  # TODO Lista de mods name:number;name,number
+        mods = args[6]  # TODO Lista de mods name:number;name,number
         self._flags = args[7]
         self._user = User(self._currentname)
+        for x in mods.split(';'):
+            powers = int(x.split(',')[1])
+            self._mods[User(x.split(',')[0])] = Struct(**dict([(mf, ModFlags[mf] & powers != 0) for mf in ModFlags] + [
+                ('isadmin', int(powers) & AdminFlags != 0)]))  #+ )) x.split(',')[1]
         if self._authtype == 'N':
             # TODO revisar todo esto
             pass
@@ -1723,8 +1814,8 @@ class Room(WSConnection):
             del self._mqueue[args[0]]
             msg.attach(self, args[1])
             self._addHistory(msg)
-            if (msg.channel >= 4 or msg.badge) and msg.user is not self.owner:  # TODO
-                self._mods.add(msg.user)
+            if (msg.channel >= 4 or msg.badge) and msg.user not in [self.owner] + list(self.mods):  # TODO
+                self._mods[msg.user] = '82368'  # TODO lo añade con el poder más básico y el badge
             self._callEvent("onMessage", msg.user, msg)
 
     def _rcmd_unblocked(self, args):  # TODO
@@ -2072,6 +2163,9 @@ class Gestor:
     def onAnonLogin(self, room, user, ssid):
         pass
 
+    def onClearall(self, room, result):
+        pass
+    
     def onConnect(self, room):
         """
         Al conectarse a una sala
@@ -2123,6 +2217,15 @@ class Gestor:
         """
         pass
 
+    def onModAdd(self, room, user):
+        pass
+
+    def onModChange(self, room, users):
+        pass
+
+    def onModRemove(self, room, user):
+        pass
+    
     def onPMContactlistReceive(self, pm):  # TODO
         """Al recibir mis contactos en el pm"""
         pass
