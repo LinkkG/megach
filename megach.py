@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.7.3
+Version: M1.7.3.1
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -1264,7 +1264,7 @@ class Room(WSConnection):
 
     @property
     def allusernames(self):
-        return [x.username for x in set(self._userdict.values())]
+        return [x.name for x in set(self._userdict.values())]
     
     @property
     def badge(self):
