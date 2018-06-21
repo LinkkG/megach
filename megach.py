@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin python
 # -*- coding: utf-8 -*-
 """
 File: megach.py
@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.7.2
+Version: M1.7.3
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -138,7 +138,7 @@ def _getAnonId(num, ts) -> str:
 
 def getanonname(num: str, ssid: str) -> str:
     """Regresa el nombre de un anon usando su numero y tiempo de conexión"""
-    num, ssid = num[-4:], ssid[-4:]
+    num, ssid = num.split('.')[0][-4:], ssid[-4:]
     return 'anon' + _getAnonId(num, ssid).zfill(4)
 
 
@@ -149,10 +149,11 @@ def _genUid():
 
 def getServer(group: str) -> str:
     """
-    TODO llamar a get_server_number(group_name)
-    :param group:
-    :return str:
     """
+    return "s" + str(getServerNumber(group)) + ".chatango.com"
+
+
+def getServerNumber(group: str) -> int:
     group = group.replace("_", "q")
     group = group.replace("-", "q")
     fnv = float(int(group[0:min(5, len(group))], 36))
@@ -171,8 +172,7 @@ def getServer(group: str) -> str:
         if num <= cumfreq:
             sn = int(wgt[0])
             break
-    return "s" + str(sn) + ".chatango.com"
-
+    return sn
 
 ################################################################
 # Cosas de los mensajes
@@ -233,22 +233,6 @@ def _strip_html(msg):
         return "".join(ret)
 
 
-def _unescape_html(args):
-    args = args.replace("&lt;", "<")
-    args = args.replace("&gt;", ">")
-    args = args.replace('&#39;', "'")
-    args = args.replace('&quot;', '"')
-    args = args.replace("&amp;", "&")  # Esto debe ir al final
-    return args
-    # o.o &amp; &#39; &quot; &amp;amp; &amp;#39; &amp;quot;
-
-
-def _parseNameColor(n: str) -> str:
-    """Return the name color from message"""
-    # probably is already the name
-    return _strip_html(n)[1]
-
-
 def _parseFont(f):
     """
     Lee el contendido de un etiqueta f y regresa
@@ -263,6 +247,22 @@ def _parseFont(f):
         return matchs[0]
     else:
         return None, None, None
+
+
+def _parseNameColor(n: str) -> str:
+    """Return the name color from message"""
+    # probably is already the name
+    return _strip_html(n)[1]
+
+
+def _unescape_html(args):
+    args = args.replace("&lt;", "<")
+    args = args.replace("&gt;", ">")
+    args = args.replace('&#39;', "'")
+    args = args.replace('&quot;', '"')
+    args = args.replace("&amp;", "&")  # Esto debe ir al final
+    return args
+    # o.o &amp; &#39; &quot; &amp;amp; &amp;#39; &amp;quot;
 
 
 ################################################################
@@ -475,7 +475,6 @@ def User(name: str, **kwargs):
     if not user:
         user = _User(name = name, **kwargs)
         _users[name.lower()] = user
-    user._showname = name  # TODO
     return user
 
 
@@ -561,10 +560,11 @@ class _User:
     # Util
     ####
     def addSessionId(self, room, sid):
-        """ TODO
+        """
+        TODO la lista de sesiones puede ser igual a la lista de ids?
         Agrega una sesión a una sala del usuario
-        :param room: Sala donde tiene esa sesión conectado
-        :param sid: Sesión del usuario
+        @param room: Sala donde tiene esa sesión conectado
+        @param sid: Sesión del usuario
         """
         if room not in self._sids:
             self._sids[room] = set()
@@ -588,7 +588,6 @@ class Message:
     Clase que representa un mensaje en una sala o en privado
     TODO revisar
     """
-
     def __init__(self, **kw):
         """
         :param kw:Parámetros del mensaje
@@ -744,6 +743,7 @@ class WSConnection:
         self._rbuf = b''  # El buffer de lectura  de la conexión
         self._server = server
         self._connectiontime = 0  # Hora local a la que se entra
+        self._correctiontime = 0
         self._servertime = 0  # Hora del servidor a la que se entra
         self._serverheaders = b''  # Las caberceras de respuesta que envió el servidor
         self._sock = None
@@ -786,6 +786,10 @@ class WSConnection:
     def sock(self) -> socket.socket:
         """El socket usado"""
         return self._sock
+
+    @property
+    def time(self):
+        return time.gmtime(time.time() + self._correctiontime)
     
     @property
     def user(self) -> _User:
@@ -817,11 +821,7 @@ class WSConnection:
     def disconnect(self):
         """Público, desconección completa"""
         self._disconnect()
-        if isinstance(self, PM):
-            self.mgr.pm = None  # TODO
-        else:
-            self.mgr.rooms.pop(self.name)  # TODO
-        self._callEvent('onDisconnect')  # TODO ondisconnect del pm?
+        self._callEvent('onDisconnect')
     
     def reconnect(self):
         """
@@ -998,10 +998,10 @@ class PM(WSConnection):
     def _getStatus(self):
         # TODO
         return self._status
-    
-    def _getAuth(self, name, password):
-        """
-        Request an auid using name and password.
+
+    def _getAuth(self, name: str, password: str):
+        """ TODO Asegurar valor de retorno
+        Solicitar un token de id usando un nombre y una clave
         @type name: str
         @param name: name
         @type password: str
@@ -1224,6 +1224,7 @@ class Room(WSConnection):
         self._connectiontime = 0
         self._silent = False
         self._time = None
+        self._timecorrection = 0
         self._owner = None
         self._user = None
         self._users = deque()  # TODO reemplazar userlist con userdict y userhistory
@@ -1390,7 +1391,7 @@ class Room(WSConnection):
         self._sendCommand('addmod:{}:{}'.format(user, powers))
 
     def clearall(self):  # TODO
-        """Norra todos los mensajes"""
+        """Borra todos los mensajes"""
         if self.user == self._owner or self._user in self._mods and self._mods.get(self._user).EDIT_GROUP:
             self._sendCommand("clearall")
             return True
@@ -1488,21 +1489,11 @@ class Room(WSConnection):
         if self.connected:
             self._sendCommand('msgbg', str(self._bgmode))
 
-    def setRecordingMode(self, modo):
-        self._recording = modo
-        if self.connected:
-            self._sendCommand('msgmedia', str(self._bgmode))
-    
-    @staticmethod
-    def getAnonName(num: str, ts: str):
-        """
-        Obtener el nombre de anon para una sesión
-        @param num: El número de la sesión
-        @param ts: El tiempo de la conexión
-        @return:  anon####
-        """
-        return 'anon' + _getAnonId(num, ts)
-    
+    def requestBanlist(self):
+        self._sendCommand('blocklist', 'block',
+                          str(int(time.time()) + self._correctiontime),
+                          'next', '500', 'anons', '1')
+
     def _login(self, uname = None, password = None):  # TODO, Name y password no shilven
         """
         Autenticar. Logearse como uname con password. En caso de no haber ninguno usa la _currentaccount
@@ -1513,7 +1504,35 @@ class Room(WSConnection):
         __reg2 = ["bauth", self.name, _genUid(), self._currentaccount[0], self._currentaccount[1]]  # TODO comando
         self._currenname = self._currentaccount[0]
         self._sendCommand(*__reg2)
-    
+
+    def setRecordingMode(self, modo):
+        self._recording = modo
+        if self.connected:
+            self._sendCommand('msgmedia', str(self._bgmode))
+
+    def findUser(self, name):
+        if name in self.allusernames:
+            return User(name)
+        return None
+
+    def login(self, uname = None, password = None, account = None):
+        # if account: TODO login aunque tenga otra cuenta conectada?
+        #    self
+        # , self.name, _genUid(), self._currentaccount[0], self._currentaccount[1]]  # TODO comando
+        # self._currenname = self._currentaccount[0]
+        if not account:
+            account = [self._currentaccount[0], self._currentaccount[1]]
+        if uname:
+            account = [uname, '']
+            if password:
+                account[1] = password
+        if isinstance(account, str):
+            cuenta = {k.lower(): [k, v] for k, v in self.mgr._accounts}.get(account.lower(), self.mgr._accounts[0])
+            cuenta[0] = account  # Poner el nombre tal cual
+            account = cuenta
+            self._currentaccount = [account[0], account[1]]
+        self._sendCommand('blogin', account[0], account[1])
+   
     def reset(self):
         """Reiniciar todos los valores por defecto no confundir con _reset"""
         # TODO
@@ -1717,20 +1736,30 @@ class Room(WSConnection):
 
     def _rcmd_ok(self, args):  # TODO
         self._connected = True
-        self._connectiontime = time.time()
         self._owner = User(args[0])
-        self.user_id = args[1]  # TODO
+        self._puid = args[1]  # TODO
         self._authtype = args[2]  # M=Ok, N= ? TODO tipo C
         self._currentname = args[3]
-        self._servertime = args[4]
+        self._connectiontime = args[4]
+        self._correctiontime = float(self._connectiontime) - time.time()
         self._currentIP = args[5]
-        mods = args[6]  # TODO Lista de mods name:number;name,number
+        mods = args[6]
         self._flags = args[7]
-        self._user = User(self._currentname)
-        for x in mods.split(';'):
-            powers = int(x.split(',')[1])
-            self._mods[User(x.split(',')[0])] = Struct(**dict([(mf, ModFlags[mf] & powers != 0) for mf in ModFlags] + [
-                ('isadmin', int(powers) & AdminFlags != 0)]))  #+ )) x.split(',')[1]
+
+        # Auth type
+        if self._authtype == 'M':  # Login Correcto
+            self._user = User(self._currentname)
+            pass
+        elif self._authtype == 'C':  # Login incorrecto
+            self._user = User('!' + getanonname(self._servertime, self._puid))
+        elif self._authtype == 'N':
+            pass
+        if mods:
+            for x in mods.split(';'):
+                powers = int(x.split(',')[1])
+                self._mods[User(x.split(',')[0])] = Struct(
+                    **dict([(mf, ModFlags[mf] & powers != 0) for mf in ModFlags] + [
+                        ('isadmin', int(powers) & AdminFlags != 0)]))
         if self._authtype == 'N':
             # TODO revisar todo esto
             pass
@@ -1894,13 +1923,17 @@ class Gestor:
         return self._pm
     
     @property
-    def user(self):
-        return self._user
-    
-    @property
     def rooms(self):
         """Mis salas"""
         return self._rooms
+    
+    @property
+    def user(self):
+        return self._user
+
+    @property
+    def roomnames(self):
+        return [x.name for x in self._rooms]
     
     @classmethod
     def easy_start(cls, rooms: list = None, name: str = None, password: str = None, pm: bool = True,
@@ -1975,7 +2008,9 @@ class Gestor:
         if account is None:
             account = self._accounts[0]
         if isinstance(account, str):
-            account = {k.lower(): [k, v] for k, v in self._accounts}.get(account.lower(), self._accounts[0])
+            cuenta = {k.lower(): [k, v] for k, v in self._accounts}.get(account.lower(), self._accounts[0])
+            cuenta[0] = account
+            account = cuenta
         if room not in self._rooms:
             try:
                 self._rooms[room] = Room(room, self, account)  # TODO
@@ -1990,6 +2025,7 @@ class Gestor:
             room = room.name
         if room in self._rooms:
             self._rooms[room].disconnect()
+            self._rooms.pop(room)
     
     def main(self):
         """
