@@ -1438,6 +1438,7 @@ class Room(WSConnection):
     
     def message(self, msg, html: bool = False, canal = None):
         """
+        TODO cola de mensajes
         Envía un mensaje
         @param html: si se habilitarán los carácteres html, en caso contrario se reemplazarán los carácteres especiales
         @type msg: str
@@ -1511,6 +1512,7 @@ class Room(WSConnection):
             self._sendCommand('msgmedia', str(self._bgmode))
 
     def findUser(self, name):
+        # TODO, capacidad para recibir un User
         if name in self.allusernames:
             return User(name)
         return None
@@ -1977,6 +1979,9 @@ class Gestor:
         def cancel(self):
             """Sugar for removeTask."""
             self.mgr.removeTask(self)
+
+    def findUser(self, name):
+        return [x.name for x in self._rooms.values() if x.findUser(name)]
     
     def getConnections(self):
         """
