@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.7.3.1
+Version: M1.8
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -117,20 +117,20 @@ ModFlags = {
 AdminFlags = ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] | ModFlags["EDIT_GROUP"] | ModFlags["EDIT_GP_ANNC"]
 
 
-def _genUid():
+def _genUid() -> str:
     """Generar una uid ALeatoria de 16 dígitos"""
     return str(random.randrange(10 ** 15, 10 ** 16))
 
 
-def _getAnonId(puid, ts) -> str:
+def _getAnonId(puid: str, ts: str) -> str:
     """
     Obtener una id de anon
-    @param puid: PUID del usuario.
+    @param puid: PUID del usuario de 8 o más cifras.
     @param ts: Tiempo de sesión en que se conectó el anon, debe ser un string con un número entero
     @return: Número con la id de anon
     """
     ts = '3452' if not ts else ts
-    puid = puid[4:8]  # TODO esto ocasiona problemas
+    puid = puid[4:8]
     __reg5 = ''
     __reg1 = 0
     while __reg1 < len(puid):
@@ -149,7 +149,7 @@ def getanonname(puid: str, tssid: str) -> str:
     @param tssid: El tiempo de inicio de sesión para el anon
     @return: String con el nombre de usuario del anon
     """
-    puid, tssid = puid[-4:], tssid.split('.')[0]
+    tssid = tssid.split('.')[0][-4:]
     return 'anon' + _getAnonId(puid, tssid).zfill(4)
 
 
@@ -224,7 +224,7 @@ def _clean_message(msg: str) -> [str, str, str]:
     return msg, n, f
 
 
-def _strip_html(msg):
+def _strip_html(msg: str) -> str:
     """
     Strip HTML.
     TODO Incluir todo lo relacionado con html
@@ -245,7 +245,7 @@ def _strip_html(msg):
         return "".join(ret)
 
 
-def _parseFont(f):
+def _parseFont(f: str) -> [str, str, str]:
     """
     Lee el contendido de un etiqueta f y regresa
     color fuente y tamaño
@@ -267,11 +267,12 @@ def _parseNameColor(n: str) -> str:
     return _strip_html(n)[1]
 
 
-def _unescape_html(args):
+def _unescape_html(args: str) -> str:
     args = args.replace("&lt;", "<")
     args = args.replace("&gt;", ">")
     args = args.replace('&#39;', "'")
     args = args.replace('&quot;', '"')
+    args = args.replace('&nbsp;', ' ')
     args = args.replace("&amp;", "&")  # Esto debe ir al final
     return args
     # o.o &amp; &#39; &quot; &amp;amp; &amp;#39; &amp;quot;
@@ -738,7 +739,7 @@ class WSConnection:
     """
     Base para manejar las conexiones con Mensajes y salas
     """
-    BIGMESSAGECUT = True  # Si es True se cortan los mensajes y se mandan por separado
+    BIGMESSAGECUT = False  # Si es True se manda solo un pedazo de los mensajes, false y se mandan todos
     MAXLEN = 2900  # ON PM IS > 12000
     PINGINTERVAL = 90  # Intervalo para enviar pings, Si llega a 300 se desconecta
     
@@ -836,6 +837,7 @@ class WSConnection:
         Cierra la conexión y detiene los pings, pero el objeto sigue existiendo dentro de su mgr"""
         if self._sock is not None:
             self._sock.close()
+        # TODO do i need to clear session ids?
         self._sock = None
         self._pingTask.cancel()
     
@@ -907,6 +909,36 @@ class WSConnection:
             print('[{}][{:^10.10}]UNKNOWN DATA "{}"'.format(time.strftime('%I:%M:%S %p'), self.name, ':'.join(data)),
                   file = sys.stderr)
 
+    def _messageFormat(self, msg: str, html: bool):
+        formt = ''
+        msg = msg.strip().replace('\n', '\r')
+        # Reemplazar varios espacios para que sean visibles sin alterar el tageo
+        msg = msg.replace('\t', '&nbsp;' * 3 + ' ').replace('  ', '&nbsp;' + ' ')
+        fc = self.user.fontColor.lower()
+        nc = self.user.nameColor
+        if not html:
+            msg = html2.escape(msg, quote = False).replace('~', '&#126;')
+        if self.name == 'PM':
+            formt = '<n{}/><m v="1"><g x{:0>2.2}s{}="{}">{}</g></m>'
+            fc = fc[::2] if len(fc) == 6 else fc[:3]
+        else:  # Room
+            formt = '<n{}/><f x{:0>2.2}{}="{}">{}'
+            if self.user.isanon:  # El color del nombre es el tiempo de conexión y no hay fuente
+                nc = str(self._connectiontime).split('.')[0][-4:]
+                formt = '<n{0}/>{4}'
+        if len(msg) > self.MAXLEN:
+            if self.BIGMESSAGECUT:
+                msg = msg[:self.MAXLEN]
+            else:
+                tmp = msg
+                msg = list()
+                while len(tmp) > self.MAXLEN:
+                    msg.append(tmp[:self.MAXLEN])
+                    tmp = tmp[self.MAXLEN:]
+        if type(msg) != list:
+            msg = [msg]
+        return [formt.format(nc, str(self.user.fontSize), fc, self.user.fontFace, unimsg) for unimsg in msg]
+    
     def onData(self, data: bytes):
         """
         Al recibir datos del servidor
@@ -1111,7 +1143,7 @@ class PM(WSConnection):
 
     def getIdle(self, user):  # TODO
         """return last active time, time.time() if isn't idle, 0 if offline, None if unknown"""
-        if not user in self._status:
+        if user not in self._status:
             return None
         if not self._status[user][1]:
             return 0
@@ -1123,22 +1155,15 @@ class PM(WSConnection):
     def message(self, user, msg, html: bool = False):
         """
         Enviar un pm a un usuario
+        @param html: Indica si se permite código html en el contenido del mensaje
         @param user: Usuario al que enviar el mensaje
         @param msg: Mensaje que se envia (string)
         """
-        if isinstance(user, _User):
+        if isinstance(user, _User):  # TODO externalizar
             user = user.name
-        fc = self.user.fontColor
-        fc = fc[::2] if len(fc) == 6 else fc[:3]
-        if not html:
-            msg = html2.escape(msg).replace('~', '')
-        self._sendCommand("msg", user,
-                          '<n{}/><m v="1"><g x{}s{}="{}">{}</g></m>'.format(
-                                  self.user.nameColor,
-                                  self.user.fontSize, fc.lower(),
-                                  self.user.fontFace, msg
-                                  )
-                          )
+        msg = self._messageFormat(msg, html)
+        for unimsg in msg:
+            self._sendCommand("msg", user, unimsg)
     
     def _write(self, data: bytes):
         if not self._wlock:
@@ -1234,6 +1259,7 @@ class Room(WSConnection):
         super().__init__(name = account[0], password = account[1])
         self._badge = 0
         self._banlist = dict()
+        self._bgmode = 0  # Mover al WSConnection para usar en el pm
         self._channel = 0
         self._currentaccount = account
         self._currentname = account[0]
@@ -1411,8 +1437,11 @@ class Room(WSConnection):
 
     def banMessage(self, msg):
         if self.getLevel(self.user) > 0:
-            self.rawBan(msg.user.name, msg.ip, msg.unid)
-
+            name = '' if msg.user.name[0] in '!#' else msg.user.name
+            self.rawBan(msg.unid, msg.ip, name)
+            return True
+        return False
+    
     def banUser(self, user):
         msg = self.getLastMessage(user)
         if msg:
@@ -1428,10 +1457,26 @@ class Room(WSConnection):
         else:
             return False
 
+    def clearUser(self, user):  # TODO probar con anons
+        if self.getLevel(self.user) > 0:
+            msg = self.getLastMessage(user)
+            if msg:
+                name = '' if msg.user.name[0] in '!#' else msg.user.name
+                self._sendCommand("delallmsg", msg.unid, msg.ip, name)
+                return True
+        return False
+    
     def deleteMessage(self, message):  # TODO Algo anda mal
         if self.getLevel(self.user) > 0:
             self._sendCommand("delmsg", message.msgid)
             return True
+        return False
+
+    def deleteUser(self, user):
+        if self.getLevel(self.user) > 0:
+            msg = self.getLastMessage(user)
+            if msg:
+                self.deleteMessage(user)
         return False
     
     def findUser(self, name):
@@ -1440,6 +1485,16 @@ class Room(WSConnection):
             return User(name)
         return None
 
+    def flagMessage(self, msg):
+        self._sendCommand('g_flag', msg.msgid)
+
+    def flagUser(self, user):
+        msg = self.getLastMessage(user)
+        if msg:
+            self.flagMessage(msg)
+            return True
+        return False
+    
     def getLastMessage(self, user = None):
         """Obtener el último mensaje de un usuario en una sala"""
         if not user:
@@ -1503,28 +1558,10 @@ class Room(WSConnection):
             canal = 32768
         if msg is None:
             return
-        msg = msg.strip().replace('\n', '\r')
-        if not html:
-            msg = html2.escape(msg, quote = False)
-        if len(msg) > self.MAXLEN:
-            if self.MAXLEN:
-                while len(msg) > 0:
-                    sect = msg[:self.MAXLEN]
-                    msg = msg[self.MAXLEN:]
-                    self.message(sect, html = html)
-            elif self.BIGMESSAGECUT:
-                self.message(msg[:self.MAXLEN], html = html)
-            return
-        if self.user.isanon:
-            msg = "<n" + self._connectiontime.split('.')[0][-4:] + "/>" + msg
-        else:  # bm:ngzf:0:<n0534/>Hmm
-            msg = "<n" + self.nameColor + "/>" + msg
-        if self._currentname and not self._currentname.startswith("!anon"):
-            font_properties = "<f x%0.2i%s=\"%s\">" % (self.user.fontSize, self.user.fontColor, self.user.fontFace)
-            msg = font_properties + msg
-        msg.replace("~", "&#126;")
-        self.rawMessage('%s:%s' % (canal + self.badge * 64, msg))
-
+        msg = self._messageFormat(msg, html)
+        for x in msg:
+            self.rawMessage('%s:%s' % (canal + self.badge * 64, x))
+    
     def rawMessage(self, msg):
         """
         Send a message without n and f tags.
@@ -1532,6 +1569,7 @@ class Room(WSConnection):
         @param msg: message
         """
         if not self._silent:
+            # TODO meme se debe enviar un string aleatorio en base 36
             self._sendCommand("bm", "meme", msg)
 
     def removeMod(self, user, powers):  # TODO parametro no utilizado
@@ -1553,6 +1591,14 @@ class Room(WSConnection):
     def setSilent(self, silent):  # TODO
         self._silent = silent
 
+    def unbanUser(self, user):
+        rec = self.banRecord(user)
+        if rec:
+            self.rawUnban(rec["target"].name, rec["ip"], rec["unid"])
+            return True
+        else:
+            return False
+    
     def updateMod(self, user, powers = '82368'):  # TODO
         if isinstance(user, _User):
             user = user.name
@@ -1561,11 +1607,11 @@ class Room(WSConnection):
     ####################
     # Utilería del bot
     ####################
-    def banrecord(self, user):
+    def banRecord(self, user):
         if isinstance(user, _User):  # TODO externalizar
             user = user.name
-        if user in self._banlist:
-            return self._banlist[user]
+        if user.lower() in [x.name for x in self._banlist]:
+            return self._banlist[User(user)]
         return None
 
     def _login(self, uname = None, password = None):  # TODO, Name y password no shilven
@@ -1581,12 +1627,15 @@ class Room(WSConnection):
 
     def requestBanlist(self):  # TODO revisar
         self._sendCommand('blocklist', 'block',
-                          str(int(time.time()) + self._correctiontime),
+                          str(int(time.time() + self._correctiontime)),
                           'next', '500', 'anons', '1')
 
     def rawBan(self, unid, ip, name):  # TODO documentar
         self._sendCommand("block", unid, ip, name)
 
+    def rawUnban(self, name, ip, unid):
+        self._sendCommand("removeblock", unid, ip, name)
+    
     def requestUnBanlist(self):
         pass
     
@@ -1604,7 +1653,7 @@ class Room(WSConnection):
         name = args[1]  # Nombre de usuario si lo hay
         tempname = args[2]  # Nombre del anon si no se ha logeado
         puid = args[3]  # Id del usuario Si no está no se debe procesar
-        authorc = args[4]  # TODO Id del mensaje?
+        unid = args[4]  # TODO Id del mensaje?
         msgnum = args[5]  # Número del mensaje Si no está no se debe procesar
         ip = args[6]  # Ip del usuario
         channel = args[7] or 0  # TODO se puede saber el premium con esto premium=4 bg=(8 y premium)
@@ -1643,7 +1692,6 @@ class Room(WSConnection):
                 nameColor = n
             else:
                 nameColor = None
-        unid = args[4]
         user = User(name, ip = ip, isanon = name[0] in '#!')  # TODO
         if ip != user.ip:
             user._ip = ip
@@ -1665,19 +1713,23 @@ class Room(WSConnection):
                       room = self,
                       time = mtime,
                       unid = unid,
-                      authorc = authorc,
                       unknown2 = unknown2,
                       user = user
                       )
         self._mqueue[msgnum] = msg
     
     def _rcmd_blocked(self, args):  # TODO
-        if args[2] == "":
-            return
-        target = User(args[2])
         user = User(args[3])
+        target = None
+        if args[2] == "":
+            msx = [msg for msg in self._history if msg.unid == args[0]]
+            if msx:
+                target = msx[0].user
+            self._callEvent('onAnonBan', user, target)
+        else:
+            target = User(args[2])
+            self._callEvent("onBan", user, target)
         self._banlist[target] = {"unid": args[0], "ip": args[1], "target": target, "time": float(args[4]), "src": user}
-        self._callEvent("onBan", user, target)
 
     def _rcmd_blocklist(self, args):  # TODO
         self._banlist = dict()
@@ -1710,9 +1762,15 @@ class Room(WSConnection):
             msg.detach()
 
     def _rcmd_deleteall(self, args):  # TODO
+        user = None
         for msgid in args:
-            self._rcmd_delete([msgid])
-
+            msg = self._msgs.get(msgid)
+            if msg and msg in self._history:
+                self._history.remove(msg)
+                user = msg.user
+                msg.detach()
+        self._callEvent('onDeleteUser', user)
+    
     def _rcmd_denied(self, args):  # TODO
         pass
 
@@ -1764,22 +1822,22 @@ class Room(WSConnection):
         self._sendCommand("getpremium", "l")
         self.requestBanlist()
         self.requestUnBanlist()
-        if args and debug:
-            print('New Unhandled arg on inited ', file = sys.stderr)
+        if self._bgmode:
+            self._sendCommand('msgbg', str(self._bgmode))
         if self.attempts == 1:
             self._callEvent("onConnect")
             # TODO
         else:
             self._callEvent("onReconnect")
             # TODO
-        pass
-
+        if args and debug:
+            print('New Unhandled arg on inited ', file = sys.stderr)
+    
     def _rcmd_logoutok(self, args):
         """Me he desconectado, ahora usaré mi nombre de anon"""
         # TODO revisar este comando
-        self._currentname = '!' + getanonname(self._connectiontime, self._puid)  # TODO de donde era user_id?
-        self._user = User(self._currentname)
-        self._nameColor = self._connectiontime.split('.')[0][-4:]
+        self._currentname = '!' + getanonname(self._puid, str(self._connectiontime))  # TODO de donde era user_id?
+        self._user = User(self._currentname, nameColor = str(self._connectiontime).split('.')[0][-4:])
     
     def _rcmd_mods(self, args):  # TODO
         mods = dict()
@@ -1788,7 +1846,7 @@ class Room(WSConnection):
             powers = int(powers)
             mods[User(name)] = Struct(**dict([(mf, ModFlags[mf] & powers != 0) for mf in ModFlags] + [
                 ('isadmin', int(powers) & AdminFlags != 0)]))  # + ))
-        premods = set(self.mods.keys())
+        premods = self.mods
         self._mods = mods
         if self._user not in premods:  # Si el bot no estaba en los mods antes
             self._callEvent('onModChange', set(mods.keys()) - premods.keys())  # TODO, problemas acá?
@@ -1843,15 +1901,12 @@ class Room(WSConnection):
         tname = args[4]  # Anon Name
         unknown = args[5]  #
         contime = args[6]  # Hora del cambio
-        isanon = False  # TODO externalizar esta parte
         if name == 'None':
-            isanon = True
             if tname != 'None':
                 name = '#' + tname
             else:
-                name = '!' + getanonname(contime.split('.')[0], puid)
-        #    return
-        user = User(name, puid = puid, isanon = isanon)
+                name = '!' + getanonname(puid, contime)
+        user = User(name, puid = puid)
         if cambio == '0':  # Leave
             user.removeSessionId(self, ssid)  # Quitar la id de sesión activa
             if user in self._userlist:
@@ -1914,14 +1969,19 @@ class Room(WSConnection):
             self._callEvent("onMessage", msg.user, msg)
 
     def _rcmd_unblocked(self, args):  # TODO
-        args = ":".join(args).split(";")[-1].split(":")
-        if args[2] == "":
-            return
-        target = User(args[2])
+        args = ":".join(args).split(";")[-1].split(":")  # TODO checar
         user = User(args[3])
-        del self._banlist[target]
+        target = args[2]
+        if target == "":
+            msx = [msg for msg in self._history if msg.unid == args[0]]
+            if msx:
+                target = msx[0].user
+            self._callEvent('onAnonUnban', user, target)
+        else:
+            target = User(args[2])
+            del self._banlist[target]
+            self._callEvent("onUnban", user, target)
         self._unbanlist[user] = {"unid": args[0], "ip": args[1], "target": target, "time": float(args[4]), "src": user}
-        self._callEvent("onUnban", user, target)
 
     def _rcmd_unblocklist(self, args):  # TODO
         self._unbanlist = dict()
@@ -1997,7 +2057,7 @@ class Gestor:
 
     @property
     def roomnames(self):
-        return [x.name for x in self._rooms]
+        return list(self._rooms.keys())
     
     @classmethod
     def easy_start(cls, rooms: list = None, name: str = None, password: str = None, pm: bool = True,
@@ -2214,8 +2274,6 @@ class Gestor:
         """
         Llama a una función cada intervalo con los argumentos indicados
         @param funcion: La función que será invocada
-        @type intervalo int
-        @param intervalo:intervalo
         TODO
         """
         task = self._Task(self)
@@ -2257,6 +2315,9 @@ class Gestor:
                 print('Task error {}: {}'.format(task.func, e))
                 task.cancel()
 
+    def onAnonBan(self, room, user, target):  # TODO documentar
+        pass
+    
     def onAnonJoin(self, room, user, ssid):
         pass
 
@@ -2266,6 +2327,12 @@ class Gestor:
     def onAnonLogin(self, room, user, ssid):
         pass
 
+    def onBan(self, room, user, target):
+        pass
+
+    def onBanlistUpdate(self, rom):  # TODO comentar
+        pass
+    
     def onClearall(self, room, result):  # TODO Comentar
         pass
     
@@ -2274,6 +2341,9 @@ class Gestor:
         Al conectarse a una sala
         @param room:Sala a la que se ha conectado
         """
+        pass
+
+    def onDeleteUser(self, room, user, msgs):
         pass
     
     def onDisconnect(self, room):
