@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.8
+Version: M1.8.1
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -46,6 +46,7 @@ import base64
 from collections import namedtuple, deque
 import hashlib
 import html as html2
+import mimetypes
 import os
 import random
 import re
@@ -53,14 +54,14 @@ import select
 import socket
 import sys
 import time
-import urllib.parse
-import urllib.request
+import urllib.parse as urlparse
+import urllib.request as urlreq
 from urllib.error import HTTPError, URLError
 
 ################################################################
 # Depuración
 ################################################################
-debug = False
+debug = True
 ################################################################
 # Cosas del servidor, las cuentas y el manejo de mods
 ################################################################
@@ -89,17 +90,14 @@ _maxServernum = sum(map(lambda x: x[1], tsweights))
 
 _users = dict()
 
-
-class GroupFlags:
-    __dict__ = {
-        "LIST_TAXONOMY":     1,
-        "NOANONS":           4, "NOFLAGGING": 8, "NOCOUNTER": 16, "NOIMAGES": 32, "NOLINKS": 64, "NOVIDEOS": 128,
-        "NOSTYLEDTEXT":      256, "NOLINKSCHATANGO": 512, "NOBRDCASTMSGWITHBW": 1024, "RATELIMITREGIMEON": 2048,
-        "CHANNELSDISABLED":  8192, "NLP_SINGLEMSG": 16384, "NLP_MSGQUEUE": 32768, "BROADCAST_MODE": 65536,
-        "CLOSED_IF_NO_MODS": 131072, "IS_CLOSED": 262144, "SHOW_MOD_ICONS": 524288, "MODS_CHOOSE_VISIBLITY": 1048576,
-        "HAS_XML":           268435456, "UNSAFE": 536870912
-        }
-
+GroupFlags = {
+    "LIST_TAXONOMY":     1,
+    "NOANONS":           4, "NOFLAGGING": 8, "NOCOUNTER": 16, "NOIMAGES": 32, "NOLINKS": 64, "NOVIDEOS": 128,
+    "NOSTYLEDTEXT":      256, "NOLINKSCHATANGO": 512, "NOBRDCASTMSGWITHBW": 1024, "RATELIMITREGIMEON": 2048,
+    "CHANNELSDISABLED":  8192, "NLP_SINGLEMSG": 16384, "NLP_MSGQUEUE": 32768, "BROADCAST_MODE": 65536,
+    "CLOSED_IF_NO_MODS": 131072, "IS_CLOSED": 262144, "SHOW_MOD_ICONS": 524288, "MODS_CHOOSE_VISIBLITY": 1048576,
+    "HAS_XML":           268435456, "UNSAFE": 536870912
+    }
 
 ModFlags = {
     'DELETED':             1, 'EDIT_MODS': 2,
@@ -913,11 +911,11 @@ class WSConnection:
         formt = ''
         msg = msg.strip().replace('\n', '\r')
         # Reemplazar varios espacios para que sean visibles sin alterar el tageo
-        msg = msg.replace('\t', '&nbsp;' * 3 + ' ').replace('  ', '&nbsp;' + ' ')
         fc = self.user.fontColor.lower()
         nc = self.user.nameColor
         if not html:
             msg = html2.escape(msg, quote = False).replace('~', '&#126;')
+        msg = msg.replace('\t', '&nbsp;' * 3 + ' ').replace('  ', '&nbsp;' + ' ')
         if self.name == 'PM':
             formt = '<n{}/><m v="1"><g x{:0>2.2}s{}="{}">{}</g></m>'
             fc = fc[::2] if len(fc) == 6 else fc[:3]
@@ -1007,6 +1005,39 @@ class WSConnection:
         else:
             self._wbuf += data
 
+    def RPOST(self, url, data, headers = None):
+        """ TODO Asegurar valor de retorno
+        Solicitar un token de id usando un nombre y una clave
+        @type name: str
+        @param name: name
+        @type password: str
+        @param password: password
+        @rtype: str
+        @return: auid
+        """
+        data = urlparse.urlencode(data).encode()
+        if not headers:
+            headers = {"host": "chatango.com", "origin": "http://st.chatango.com"}
+        pet = urlreq.Request(url, data = data,
+                             headers = headers)
+        headers = None
+        try:
+            resp = urlreq.urlopen(pet)
+            headers = resp.headers
+        except HTTPError as e:
+            if debug:
+                print('Error code: ', e.code)
+            return None
+        except URLError as e:
+            if debug:
+                print('Error Reason: ', e.reason)
+            return None
+        except Exception as e:
+            if debug:
+                print('Error, not controlled: ', str(e))
+            return None
+        return headers
+
 
 class PM(WSConnection):
     """
@@ -1062,30 +1093,16 @@ class PM(WSConnection):
         @rtype: str
         @return: auid
         """
-        data = urllib.parse.urlencode({
+        data = {
             "user_id":     name,
             "password":    password,
             "storecookie": "on",
-            "checkerrors": "yes",
-            "origin":      "st.chatango.com"
-            }).encode()
-        try:
-            resp = urllib.request.urlopen("http://chatango.com/login", data)
-            headers = resp.headers
-        except HTTPError as e:
-            if debug:
-                print('Error code: ', e.code)
+            "checkerrors": "yes"
+            }
+        resp = self.RPOST("http://chatango.com/login", data)
+        if not resp:
             return None
-        except URLError as e:
-            if debug:
-                print('Error Reason: ', e.reason)
-            return None
-        except Exception as e:
-            if debug:
-                print('Error, not controlled: ', str(e))
-            return None
-        
-        for header, value in headers.items():
+        for header, value in resp.items():
             if header.lower() == "set-cookie":
                 m = self._auth_re.search(value)
                 if m:
@@ -1263,7 +1280,8 @@ class Room(WSConnection):
         self._channel = 0
         self._currentaccount = account
         self._currentname = account[0]
-        self._history = list()
+        self._flags = None
+        # self._history = list() cambiado de tipo
         self._mqueue = dict()
         self._mods = dict()
         self._msgs = dict()
@@ -1276,6 +1294,7 @@ class Room(WSConnection):
         self._silent = False
         self._time = None
         self._timecorrection = 0
+        self._info = ['', '']
         self._owner = None
         self._user = None
         self._users = deque()  # TODO reemplazar userlist con userdict y userhistory
@@ -1294,6 +1313,7 @@ class Room(WSConnection):
         if self.mgr:
             super().connect()
         self._maxHistoryLength = Gestor.maxHistoryLength  # Por que no guardar un número por sala ?)
+        self._history = deque(maxlen = self._maxHistoryLength)
         # TODO
 
     ####################
@@ -1341,6 +1361,19 @@ class Room(WSConnection):
     def currentname(self):
         return self._currentname
 
+    @property
+    def flags(self):
+        return self._flags
+
+    @flags.setter  # TODO ajustarlo para cambiar la sala
+    def flags(self, value):
+        print("HOLA")
+        self._flags = value
+
+    @property
+    def info(self):
+        return self._info
+    
     @property
     def mods(self):
         """Los mods de la sala"""
@@ -1410,17 +1443,16 @@ class Room(WSConnection):
         Agregar un mensaje al historial
         @param msg: El mensaje TODO
         """
+        if len(self._history) == self._history.maxlen:
+            rest = self._history.popleft()
+            rest.detach()
         self._history.append(msg)
-        if len(self._history) > self._maxHistoryLength:
-            rest, self._history = self._history[:-self._maxHistoryLength], self._history[
-                                                                           -self._maxHistoryLength:]
-            for msg in rest:
-                msg.detach()
 
     def _getUserlist(self, todos = 0, unica = 0, memoria = 0):  # TODO Revisar
         ul = None  # TODO Si hay flag de usuarios invisibles usar el history
         if not todos:
-            ul = map(lambda x: x.user, self._history[-memoria:])
+            ul = map(lambda x: x.user,
+                     self._history[-memoria:])  # TODO memoria no debe ser mayor a la cantidad de elementos
         else:
             ul = self._userlist
         if unica:
@@ -1486,8 +1518,8 @@ class Room(WSConnection):
         return None
 
     def flagMessage(self, msg):
-        self._sendCommand('g_flag', msg.msgid)
-
+        self._sendCommand('g_flag', msg.msgid)  # TODO test or msgunid
+    
     def flagUser(self, user):
         msg = self.getLastMessage(user)
         if msg:
@@ -1501,7 +1533,7 @@ class Room(WSConnection):
             user = self._user
         if isinstance(user, str):
             user = User(user)
-        msg = [msg for msg in self._history[::-1] if msg.user == user]
+        msg = [msg for msg in reversed(self._history) if msg.user == user]  # TODO hacerlo sin crear nuevo usuario
         if msg:
             return msg[0]
         return None
@@ -1598,12 +1630,73 @@ class Room(WSConnection):
             return True
         else:
             return False
+
+    def updateInfo(self, title = '', info = ''):
+        title = title or self._info[0]
+        info = info or self._info[1]
+        data = {
+            "erase":  0, "l": 1, "d": info, "n": title, "u": self.name, "lo": self._currentaccount[0],
+            "p":      self._currentaccount[1],
+            "origin": "st.chatango.com",
+            }
+        if self.RPOST("http://chatango.com/updategroupprofile", data):
+            return True
+        return False
     
     def updateMod(self, user, powers = '82368'):  # TODO
         if isinstance(user, _User):
             user = user.name
         self._sendCommand('updmod:{}:{}'.format(user, powers))
 
+    def updateProfile(self, age = '', gender = '', country = '', about = '', fullpic = None,
+                      show = False):  # TODO country is not working
+        # WARNING, fullpic is not working do not use"
+        data = {
+        
+            "origin": "st.chatango.com",
+            "u":      self._currentaccount[0],
+            "p":      self._currentaccount[1],
+            "auth":   "pwd", "arch": "h5", "src": "group", "action": "update",
+            "age":    age, "gender": gender, "location": country, "line": about,
+            
+            }
+        headers = None
+        if fullpic:
+            data.update({"action": "fullpic"})
+            boundary = '--SEPARADOR'
+            data = tuple(data.items())
+            partes = []
+            partes.extend(
+                    ['--' + boundary,
+                     'Content-Disposition: form-data; name="%s"' % name,
+                     '',
+                     value,
+                     ]
+                    for name, value in data
+                    )
+            partes.extend([
+                ['--' + boundary,
+                 'Content-Disposition: file; name="Filedata"; filename="%s"' % (fullpic),
+                 'Content-Type: %s' % mimetypes.guess_type(fullpic)[0],
+                 '',
+                 str(open(fullpic, "rb").read()),
+                 ]])
+            flattened = list(__import__("itertools").chain(*partes))
+            flattened.append('--' + boundary + '--')
+            flattened.append('')
+            data = '\r\n'.join(str(x) for x in flattened)
+            headers = {
+                "host":           "chatango.com", "origin": "http://st.chatango.com",
+                "Content-type":   'multipart/form-data; boundary=' + boundary,
+                "Content-length": len(data)  # len(data)
+                }
+    
+        if self.RPOST("http://chatango.com/updateprofile", data, headers = headers):
+            return True
+        else:
+            return False
+        pass
+    
     ####################
     # Utilería del bot
     ####################
@@ -1625,6 +1718,14 @@ class Room(WSConnection):
         self._currenname = self._currentaccount[0]
         self._sendCommand(*__reg2)
 
+    @staticmethod
+    def _parseFlags(flags, molde):  # TODO documentar
+        if type(flags) == int or flags.isdigit():
+            flags = int(flags)
+            return Struct(**dict([(mf, molde[mf] & flags != 0) for mf in molde]))
+        else:
+            return flags
+    
     def requestBanlist(self):  # TODO revisar
         self._sendCommand('blocklist', 'block',
                           str(int(time.time() + self._correctiontime)),
@@ -1639,14 +1740,16 @@ class Room(WSConnection):
     def requestUnBanlist(self):
         pass
     
-    def reset(self):
-        """Reiniciar todos los valores por defecto no confundir con _reset"""
-        # TODO
-        self.participants_number = 0
-
     ####################
     # Comandos recibidos
     ####################
+    def _rcmd_aliasok(self, args):
+        """
+        Se ha iniciado sesión con el alias indicado
+        """
+        # TODO Cambiar el self.user por el alias usado en login
+        pass
+    
     def _rcmd_b(self, args):  # TODO reducir proceso
         # TODO el reconocimiento de otros bots en anon está incompleto
         mtime = float(args[0])  # Hora de envío del mensaje
@@ -1774,7 +1877,7 @@ class Room(WSConnection):
     def _rcmd_denied(self, args):  # TODO
         pass
 
-    def _rcmd_getannc(self, args):  # TODO
+    def _rcmd_getannc(self, args):  # TODO falta rcmd
         pass
     
     def _rcmd_g_participants(self, args):
@@ -1811,10 +1914,54 @@ class Room(WSConnection):
         # TODO
         self.mgr.setPremium(args)
         self._sendCommand('msgbg', str(self._bgmode))
+
+    def _rcmd_groupflagsupdate(self, args):
+        flags = args[0]
+        self._flags = self._parseFlags(flags, GroupFlags)
+        self._callEvent('onFlagsUpdate')
     
     def _rcmd_i(self, args):  # TODO
-    
-        pass
+        mtime = float(args[0])
+        puid = args[3]
+        ip = args[6]
+        name = args[1]
+        rawmsg = ":".join(args[9:])
+        msg, n, f = _clean_message(rawmsg)
+        if name == "":
+            nameColor = None
+            name = "#" + args[2]
+            if name == "#":
+                name = "!" + getanonname(puid, n)
+        else:
+            if n:
+                nameColor = _parseNameColor(n)
+            else:
+                nameColor = None
+        i = args[5]
+        unid = args[4]
+        user = User(name)
+        # Create an anonymous message and queue it because msgid is unknown.
+        if f:
+            fontColor, fontFace, fontSize = _parseFont(f)
+        else:
+            fontColor, fontFace, fontSize = None, None, None
+        msg = Message(
+                time = mtime,
+                user = user,
+                body = msg,
+                raw = rawmsg,
+                ip = ip,
+                nameColor = nameColor,
+                fontColor = fontColor,
+                fontFace = fontFace,
+                fontSize = fontSize,
+                unid = unid,
+                puid = puid,
+                room = self
+                )
+        if len(self._history) <= self._history.maxlen:
+            self._history.appendleft(msg)
+            # self._callEvent("onHistoryMessage", user, msg)
     
     def _rcmd_inited(self, args):  # TODO
         """Em el chat es solo para desactivar la animación de espera por conexión"""
@@ -1822,8 +1969,6 @@ class Room(WSConnection):
         self._sendCommand("getpremium", "l")
         self.requestBanlist()
         self.requestUnBanlist()
-        if self._bgmode:
-            self._sendCommand('msgbg', str(self._bgmode))
         if self.attempts == 1:
             self._callEvent("onConnect")
             # TODO
@@ -1849,7 +1994,7 @@ class Room(WSConnection):
         premods = self.mods
         self._mods = mods
         if self._user not in premods:  # Si el bot no estaba en los mods antes
-            self._callEvent('onModChange', set(mods.keys()) - premods.keys())  # TODO, problemas acá?
+            self._callEvent('onModChange', set(mods.keys()) - premods)  # TODO, problemas acá?
         else:
             for user in set(mods.keys()) - premods:  # Con Mod
                 self._callEvent("onModAdd", user)
@@ -1872,8 +2017,8 @@ class Room(WSConnection):
         self._correctiontime = float(self._connectiontime) - time.time()
         self._currentIP = args[5]
         mods = args[6]
-        self._flags = args[7]
-
+        flags = args[7]
+        self._flags = self._parseFlags(flags, GroupFlags)
         # Auth type1|
         if self._authtype == 'M':  # Login Correcto
             self._user = User(self._currentname)
@@ -1885,9 +2030,7 @@ class Room(WSConnection):
         if mods:
             for x in mods.split(';'):
                 powers = int(x.split(',')[1])
-                self._mods[User(x.split(',')[0])] = Struct(
-                        **dict([(mf, ModFlags[mf] & powers != 0) for mf in ModFlags] + [
-                            ('isadmin', int(powers) & AdminFlags != 0)]))
+                self._mods[User(x.split(',')[0])] = self._parseFlags(powers, ModFlags)
     
     def _rcmd_participant(self, args):
         """
@@ -1940,10 +2083,12 @@ class Room(WSConnection):
                     self._userhistory.append([contime, before])
                     self._callEvent('onUserLogout', user, puid)
             self._userdict[ssid] = user
-    
-    def _rcmd_premium(self, args):  # TODO
-        pass
 
+    def _rcmd_premium(self, args):  # TODO el tiempo mostrado usa la hora del server
+        # TODO usar args para definir el estado premium y el tiempo
+        if self._bgmode:
+            self._sendCommand('msgbg', str(self._bgmode))
+    
     def _rcmd_show_fw(self, args):  # TODO
         pass
 
@@ -1992,7 +2137,7 @@ class Room(WSConnection):
                 continue
             if params[2] == "":
                 continue
-            user = User(params[2])
+            user = User(params[2] or 'Anon')
             self._unbanlist[user] = {
                 "unid":   params[0],
                 "ip":     params[1],
@@ -2001,6 +2146,10 @@ class Room(WSConnection):
                 "src":    User(params[4])
                 }
         self._callEvent("onUnBanlistUpdate")
+
+    def _rcmd_updgroupinfo(self, args):  # TODO documentar
+        self._info = [urlreq.unquote(args[0]), urlreq.unquote(args[1])]
+        self._callEvent('onUpdateInfo')
 
 
 class Gestor:
@@ -2201,13 +2350,6 @@ class Gestor:
                                                                                     counter),
                                         file = sys.stderr)
                                 counter += 1
-
-            # except ConnectionResetError as e:
-            #    time.sleep(5)
-
-            # except Exception as e:
-            #    print("error en main " + str(e), file = sys.stderr)
-            # raise e
             self._tick()
         # Finish
         for conn in self.getConnections():
@@ -2273,8 +2415,8 @@ class Gestor:
     def setTimeout(self, tiempo, funcion, *args, **kwargs):
         """
         Llama a una función cada intervalo con los argumentos indicados
+        @param tiempo: Tiempo en segundos hasta que se ejecute la función
         @param funcion: La función que será invocada
-        TODO
         """
         task = self._Task(self)
         task.mgr = self
@@ -2363,10 +2505,22 @@ class Gestor:
         """
         pass
 
+    def onFlagsUpdate(self, room):  # TODO documentar
+        """
+        Cuando cambian las reglas internas de una sala
+        @param room: Sala donde ocurre el cambio
+        @return:
+        """
+        pass
+    
     def onFloodBan(self, room: Room, tiempo: int):  # TODO documentar
         pass
 
-    def onFloodWarning(self, room):  # TODO documentar
+    def onFloodWarning(self, room):
+        """
+        Al recibir una advertencia de flood
+        @param room: Sala en la que se recibe la advertencia
+        """
         pass
     
     def onJoin(self, room, user, ssid):
@@ -2404,9 +2558,12 @@ class Gestor:
 
     def onModRemove(self, room, user):
         pass
-    
-    def onPMContactlistReceive(self, pm):  # TODO
-        """Al recibir mis contactos en el pm"""
+
+    def onPMContactlistReceive(self, pm):
+        """
+        Al recibir mis contactos en el pm
+        @param pm: El PM
+        """
         pass
     
     def onPMConnect(self, pm: PM):
@@ -2473,6 +2630,13 @@ class Gestor:
         """
         pass
 
+    def onUpdateInfo(self, room):
+        """
+        Cuando se actualiza la información de una sala
+        @param room: Sala donde ocurre el cambio
+        """
+        pass
+    
     def onUserCountChange(self, room):
         """
         Al cambiar la cantidad de usuarios en una sala
