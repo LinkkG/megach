@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.8.1
+Version: M1.8.2
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -127,7 +127,7 @@ def _getAnonId(puid: str, ts: str) -> str:
     @param ts: Tiempo de sesión en que se conectó el anon, debe ser un string con un número entero
     @return: Número con la id de anon
     """
-    ts = '3452' if not ts else ts
+    ts = '3452' if not ts else ts.split('.')[0][-4:]
     puid = puid[4:8]
     __reg5 = ''
     __reg1 = 0
@@ -147,7 +147,6 @@ def getanonname(puid: str, tssid: str) -> str:
     @param tssid: El tiempo de inicio de sesión para el anon
     @return: String con el nombre de usuario del anon
     """
-    tssid = tssid.split('.')[0][-4:]
     return 'anon' + _getAnonId(puid, tssid).zfill(4)
 
 
@@ -837,12 +836,16 @@ class WSConnection:
             self._sock.close()
         # TODO do i need to clear session ids?
         self._sock = None
+        self._serverheaders = b''
         self._pingTask.cancel()
     
     def disconnect(self):
         """Público, desconección completa"""
         self._disconnect()
-        self._callEvent('onDisconnect')
+        if isinstance(self, PM):
+            self._callEvent('onDisconnect')
+        else:
+            self._callEvent('onPMDisconnect')
     
     def reconnect(self):
         """
@@ -902,7 +905,8 @@ class WSConnection:
             try:  # TODO no se supone que ocurran, si lo hacen hay que revisar el proceso
                 getattr(self, func)(args)
             except Exception as e:
-                print('[%s] ERROR ON PROCESS "%s" "%s"' % (self.name, func, e), file = sys.stderr)
+                print('[%s][%s] ERROR ON PROCESS "%s" "%s"' % (time.strftime('%I:%M:%S %p'), self.name, func, e),
+                      file = sys.stderr)
         elif debug:
             print('[{}][{:^10.10}]UNKNOWN DATA "{}"'.format(time.strftime('%I:%M:%S %p'), self.name, ':'.join(data)),
                   file = sys.stderr)
@@ -1656,7 +1660,7 @@ class Room(WSConnection):
                       show = False):  # TODO country is not working
         # WARNING, fullpic is not working do not use"
         data = {
-        
+    
             "origin": "st.chatango.com",
             "u":      self._currentaccount[0],
             "p":      self._currentaccount[1],
@@ -1694,7 +1698,7 @@ class Room(WSConnection):
                 "Content-type":   'multipart/form-data; boundary=' + boundary,
                 "Content-length": len(data)  # len(data)
                 }
-    
+
         if self.RPOST("http://chatango.com/updateprofile", data, headers = headers):
             return True
         else:
@@ -2112,7 +2116,8 @@ class Room(WSConnection):
             msg.attach(self, args[1])
             self._addHistory(msg)
             if (msg.channel >= 4 or msg.badge) and msg.user not in [self.owner] + list(self.mods):  # TODO
-                self._mods[msg.user] = '82368'  # TODO lo añade con el poder más básico y el badge
+                self._mods[msg.user] = self._parseFlags('82368',
+                                                        ModFlags)  # TODO lo añade con el poder más básico y el badge
             self._callEvent("onMessage", msg.user, msg)
 
     def _rcmd_unblocked(self, args):  # TODO
@@ -2591,6 +2596,8 @@ class Gestor:
         """
         pass
 
+    def onPMDisconnect(self, pm):
+        pass
     def onPMMessage(self, pm, user, message):
         """
         Al recibir un mensaje privado de un usuario
