@@ -130,7 +130,8 @@ def _getAnonId(puid: str, ts: str) -> str:
     @return: Número con la id de anon
     """
     ts = '3452' if not ts else ts.split('.')[0][-4:]
-    puid = puid[4:8]
+    if len(puid) > 7:
+        puid = puid[4:8]
     __reg5 = ''
     __reg1 = 0
     while __reg1 < len(puid):
@@ -1198,6 +1199,7 @@ class PM(WSConnection):
             print(args)
         self._sendCommand("wl")  # TODO
         self._sendCommand("getblock")  # TODO
+        self._connected = True
         self._callEvent('onPMConnect')
 
     def _rcmd_block_list(self, args):  # TODO
@@ -2210,7 +2212,7 @@ class Gestor:
     @property
     def rooms(self):
         """Mis salas"""
-        return list(self._rooms.values())
+        return list(x for x in self._rooms.values() if x.sock is not None)
 
     @property
     def user(self):
