@@ -48,12 +48,14 @@ import hashlib
 import html as html2
 import mimetypes
 import os
+import queue
 import random
 import re
 import select
 import socket
 import sys
 import time
+import threading
 import urllib.parse as urlparse
 import urllib.request as urlreq
 from urllib.error import HTTPError, URLError
@@ -842,7 +844,7 @@ class WSConnection:
     def disconnect(self):
         """Público, desconección completa"""
         self._disconnect()
-        if isinstance(self, PM):
+        if not isinstance(self, PM):
             self._callEvent('onDisconnect')
         else:
             self._callEvent('onPMDisconnect')
@@ -951,7 +953,8 @@ class WSConnection:
             self._serverheaders, self._rbuf = self._rbuf.split(b'\r\n' * 2)
             clave = WS.checkHeaders(self._serverheaders)
             if clave != WS.getServerSeckey(self._headers) and debug:
-                print(
+                if debug:
+                    print(
                         'Un proxy ha enviado una respuesta en caché, puede que no estés conectado a la versión más '
                         'reciente del servidor',
                         file = sys.stderr)
@@ -2170,6 +2173,7 @@ class Gestor:
 
     def __init__(self, name: str = None, password: str = None, pm: bool = None, accounts = None):
         self._accounts = accounts
+        self._colasalas = queue.Queue()
         if accounts is None:
             self._accounts = [(name, password)]
         self._name = self._accounts[0][0]
@@ -2239,6 +2243,7 @@ class Gestor:
         #    password = ''
         self = cls(name, password, pm, accounts)
         for room in rooms:
+    
             self.joinRoom(room)
 
         self.main()
@@ -2296,10 +2301,17 @@ class Gestor:
             cuenta[0] = account
             account = cuenta
         if room not in self._rooms:
-            self._rooms[room] = Room(room, self, account)
+            # self._rooms[room] = Room(room, self, account)
+            self._colasalas.put((room, account))
             return True
         else:
             return False
+
+    def _joinThread(self):
+        while True:
+            room, account = self._colasalas.get()
+            con = Room(room, self, account)
+            self._rooms[room] = con
     
     def leaveRoom(self, room):
         if isinstance(room, Room):
@@ -2315,6 +2327,9 @@ class Gestor:
         """
         self.onInit()
         self._running = True
+        self._t = threading.Thread(target = self._joinThread, name = "Join rooms")
+        self._t.daemon = True
+        self._t.start()
         while self._running:
             # try:
             if self._running:
