@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.8.2
+Version: M1.8.3
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -63,7 +63,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-debug = True
+debug = False
 ################################################################
 # Cosas del servidor, las cuentas y el manejo de mods
 ################################################################
@@ -630,12 +630,21 @@ class Message:
                 continue
             setattr(self, "_" + attr, val)
 
+    def __len__(self):
+        return len(self.body)
+
+    def __add__(self, otro):
+        return self.body + str(otro)
+
+    def __radd__(self, otro):
+        return self.body + str(otro)
+    
     def __repr__(self):
-        return self.body.rstrip('\n')
+        return self.body
     
     def __str__(self):
-        return '[%s][%s]:%s' % (self.room.name, self.user.name, self.body)
-
+        return self.body
+    
     ####
     # Properties
     ####
@@ -956,9 +965,9 @@ class WSConnection:
             if clave != WS.getServerSeckey(self._headers) and debug:
                 if debug:
                     print(
-                        'Un proxy ha enviado una respuesta en caché, puede que no estés conectado a la versión más '
-                        'reciente del servidor',
-                        file = sys.stderr)
+                            'Un proxy ha enviado una respuesta en caché, puede que no estés conectado a la versión más '
+                            'reciente del servidor',
+                            file = sys.stderr)
             self._setWriteLock(False)
             self._login()
         else:
@@ -1932,23 +1941,26 @@ class Room(WSConnection):
     
     def _rcmd_i(self, args):  # TODO
         mtime = float(args[0])
-        puid = args[3]
-        ip = args[6]
         name = args[1]
+        tname = args[2]
+        puid = args[3]
+        unid = args[4]
+        i = args[5]  # TODO what is this for?
+        ip = args[6]  # TODO espacios 7 y 8
         rawmsg = ":".join(args[9:])
         msg, n, f = _clean_message(rawmsg)
         if name == "":
             nameColor = None
-            name = "#" + args[2]
+            name = "#" + tname
             if name == "#":
+                if n == '000':
+                    n = ''
                 name = "!" + getanonname(puid, n)
         else:
             if n:
                 nameColor = _parseNameColor(n)
             else:
                 nameColor = None
-        i = args[5]
-        unid = args[4]
         user = User(name)
         # Create an anonymous message and queue it because msgid is unknown.
         if f:
@@ -1971,7 +1983,7 @@ class Room(WSConnection):
                 )
         if len(self._history) <= self._history.maxlen:
             self._history.appendleft(msg)
-            # self._callEvent("onHistoryMessage", user, msg)
+            self._callEvent("onHistoryMessage", user, msg)
     
     def _rcmd_inited(self, args):  # TODO
         """Em el chat es solo para desactivar la animación de espera por conexión"""
@@ -2009,6 +2021,9 @@ class Room(WSConnection):
                 self._callEvent("onModAdd", user)
             for user in premods - set(mods.keys()):  # Sin Mod
                 self._callEvent("onModRemove", user)
+
+    def _rcmd_miu(self, args):  # TODO documentar
+        self._callEvent('onPictureChange', User(args[0]))
     
     def _rcmd_n(self, args):  # TODO
         """Cambió la cantidad de usuarios en la sala"""
@@ -2338,7 +2353,10 @@ class Gestor:
                 conns = self.getConnections()
                 socks = [x.sock for x in conns]
                 wsocks = [x.sock for x in conns if x.wbuf]
-                rd, wr, sp = select.select(socks, wsocks, socks, self._TimerResolution)
+                if not conns and not socks and not wsocks:
+                    rd, wr, sp = [], [], []
+                else:
+                    rd, wr, sp = select.select(socks, wsocks, socks, self._TimerResolution)
                 for sock in wr:  # Enviar
                     try:
                         con = [x for x in conns if x.sock == sock][0]
@@ -2547,6 +2565,9 @@ class Gestor:
         @param room: Sala en la que se recibe la advertencia
         """
         pass
+
+    def onHistoryMessage(self, room, user, message):  # TODO documentar
+        pass
     
     def onJoin(self, room, user, ssid):
         pass
@@ -2616,6 +2637,7 @@ class Gestor:
 
     def onPMDisconnect(self, pm):
         pass
+
     def onPMMessage(self, pm, user, message):
         """
         Al recibir un mensaje privado de un usuario
@@ -2627,6 +2649,20 @@ class Gestor:
         pass
 
     def onPMMessageSend(self, pm, user, message):
+        """
+        Cuando se envía un mensaje al pm
+        @param pm: El PM
+        @param user: El usuario al que se envía el mensaje
+        @param message: El mensaje enviado
+        """
+        pass
+
+    def onPictureChange(self, room, user):
+        """
+        Cuando un usuario cambia su imagen de perfil en una sala
+        @param room: La sala en la que se cambió la imagen
+        @param user: El usuario
+        """
         pass
     
     def onPing(self, room: Room):
