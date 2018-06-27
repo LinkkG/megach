@@ -116,7 +116,7 @@ AdminFlags = ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] | ModFlags["E
 
 
 def _genUid() -> str:
-    """Generar una uid ALeatoria de 16 dígitos"""
+    """Generar una uid ALeatoria de 16 dígitos. Se usa en el login por seguridad"""
     return str(random.randrange(10 ** 15, 10 ** 16))
 
 
@@ -738,7 +738,7 @@ class WSConnection:
     Base para manejar las conexiones con Mensajes y salas
     """
     BIGMESSAGECUT = False  # Si es True se manda solo un pedazo de los mensajes, false y se mandan todos
-    MAXLEN = 2900  # ON PM IS > 12000
+    MAXLEN = 2800  # 2900 ON PM IS > 12000
     PINGINTERVAL = 90  # Intervalo para enviar pings, Si llega a 300 se desconecta
     
     def __init__(self, mgr: object = None, name: str = '', password: str = '', server: str = '',
@@ -902,7 +902,7 @@ class WSConnection:
             try:  # TODO no se supone que ocurran, si lo hacen hay que revisar el proceso
                 getattr(self, func)(args)
             except Exception as e:
-                print('ERROR ON PROCESS "%s" "%s"' % (func, e), file = sys.stderr)
+                print('[%s] ERROR ON PROCESS "%s" "%s"' % (self.name, func, e), file = sys.stderr)
         elif debug:
             print('[{}][{:^10.10}]UNKNOWN DATA "{}"'.format(time.strftime('%I:%M:%S %p'), self.name, ':'.join(data)),
                   file = sys.stderr)
@@ -1008,12 +1008,9 @@ class WSConnection:
     def RPOST(self, url, data, headers = None):
         """ TODO Asegurar valor de retorno
         Solicitar un token de id usando un nombre y una clave
-        @type name: str
-        @param name: name
-        @type password: str
-        @param password: password
-        @rtype: str
-        @return: auid
+        @param data: Los datos que serán enviados en la consulta POST
+        @param headers: Las cabeceras de la consulta POST
+        @param url: La url a la que se hará la consulta
         """
         data = urlparse.urlencode(data).encode()
         if not headers:
@@ -1181,6 +1178,7 @@ class PM(WSConnection):
         msg = self._messageFormat(msg, html)
         for unimsg in msg:
             self._sendCommand("msg", user, unimsg)
+            self._callEvent('onPMMessageSend', User(user), unimsg)
     
     def _write(self, data: bytes):
         if not self._wlock:
@@ -1309,7 +1307,6 @@ class Room(WSConnection):
         self.mgr = mgr
         self.msgs = dict()  # TODO esto y history es lo mismo?
         self.status = None
-        self.usercount = 0
         if self.mgr:
             super().connect()
         self._maxHistoryLength = Gestor.maxHistoryLength  # Por que no guardar un número por sala ?)
@@ -1425,9 +1422,16 @@ class Room(WSConnection):
         return self._getUserlist(1, 1)
 
     @property
+    def alluserCount(self):
+        return len(self.alluserlist)
+
+    @property
     def userCount(self):
         """Cantidad de usuarios en la sala"""
-        return self._userCount
+        if self.flags.NOCOUNTER:
+            return len(self.userlist)
+        else:
+            return self._userCount
 
     @property
     def usernames(self):
@@ -1719,12 +1723,9 @@ class Room(WSConnection):
         self._sendCommand(*__reg2)
 
     @staticmethod
-    def _parseFlags(flags, molde):  # TODO documentar
-        if type(flags) == int or flags.isdigit():
-            flags = int(flags)
-            return Struct(**dict([(mf, molde[mf] & flags != 0) for mf in molde]))
-        else:
-            return flags
+    def _parseFlags(flags: str, molde: dict) -> Struct:  # TODO documentar
+        flags = int(flags)
+        return Struct(**dict([(mf, molde[mf] & flags != 0) for mf in molde]))
     
     def requestBanlist(self):  # TODO revisar
         self._sendCommand('blocklist', 'block',
@@ -1988,9 +1989,8 @@ class Room(WSConnection):
         mods = dict()
         for mod in args:
             name, powers = mod.split(',', 1)
-            powers = int(powers)
-            mods[User(name)] = Struct(**dict([(mf, ModFlags[mf] & powers != 0) for mf in ModFlags] + [
-                ('isadmin', int(powers) & AdminFlags != 0)]))  # + ))
+            mods[User(name)] = self._parseFlags(powers, ModFlags)
+            mods[User(name)].isadmin = int(powers) & AdminFlags != 0
         premods = self.mods
         self._mods = mods
         if self._user not in premods:  # Si el bot no estaba en los mods antes
@@ -2003,9 +2003,10 @@ class Room(WSConnection):
     
     def _rcmd_n(self, args):  # TODO
         """Cambió la cantidad de usuarios en la sala"""
-        self._userCount = int(args[0], 16)
-        assert not self._userdict or len(self._userdict) == self._userCount, 'Warning count doesnt match'  # TODO
-        self._callEvent("onUserCountChange")
+        if not self.flags.NOCOUNTER:
+            self._userCount = int(args[0], 16)
+            assert not self._userdict or len(self._userdict) == self._userCount, 'Warning count doesnt match'  # TODO
+            self._callEvent("onUserCountChange")
 
     def _rcmd_ok(self, args):  # TODO
         self._connected = True
@@ -2029,8 +2030,9 @@ class Room(WSConnection):
             pass
         if mods:
             for x in mods.split(';'):
-                powers = int(x.split(',')[1])
+                powers = x.split(',')[1]
                 self._mods[User(x.split(',')[0])] = self._parseFlags(powers, ModFlags)
+                self._mods[User(x.split(',')[0])].isadmin = int(powers) & AdminFlags != 0
     
     def _rcmd_participant(self, args):
         """
@@ -2198,8 +2200,8 @@ class Gestor:
     @property
     def rooms(self):
         """Mis salas"""
-        return self._rooms
-    
+        return list(self._rooms.values())
+
     @property
     def user(self):
         return self._user
@@ -2368,13 +2370,13 @@ class Gestor:
         """Enable background if available."""
         self.user._mbg = True
         for room in self.rooms:
-            self.getRoom(room).setBgMode(int(activo))
-    
-    def enableRecording(self):
+            room.setBgMode(int(activo))
+
+    def enableRecording(self, activo = True):
         """Enable recording if available."""
         self.user._mrec = True
         for room in self.rooms:
-            self.getRoom(room).setRecordingMode(1)
+            room.setRecordingMode(int(activo))
     
     def setFontColor(self, hexfont):
         self.user._fontColor = hexfont
@@ -2597,6 +2599,9 @@ class Gestor:
         @param message: El mensaje es de tipo (Message)
         @return:
         """
+        pass
+
+    def onPMMessageSend(self, pm, user, message):
         pass
     
     def onPing(self, room: Room):
