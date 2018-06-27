@@ -2009,7 +2009,7 @@ class Room(WSConnection):
         """Cambió la cantidad de usuarios en la sala"""
         if not self.flags.NOCOUNTER:
             self._userCount = int(args[0], 16)
-            assert not self._userdict or len(self._userdict) == self._userCount, 'Warning count doesnt match'  # TODO
+            # assert not self._userdict or len(self._userdict) == self._userCount, 'Warning count doesnt match'  # TODO
             self._callEvent("onUserCountChange")
 
     def _rcmd_ok(self, args):  # TODO
