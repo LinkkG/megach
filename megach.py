@@ -2118,6 +2118,7 @@ class Room(WSConnection):
             if (msg.channel >= 4 or msg.badge) and msg.user not in [self.owner] + list(self.mods):  # TODO
                 self._mods[msg.user] = self._parseFlags('82368',
                                                         ModFlags)  # TODO lo añade con el poder más básico y el badge
+                self._mods[User(x.split(',')[0])].isadmin = int('82368') & AdminFlags != 0
             self._callEvent("onMessage", msg.user, msg)
 
     def _rcmd_unblocked(self, args):  # TODO
@@ -2280,7 +2281,7 @@ class Gestor:
         if room in self._rooms:
             return self._rooms[room]
         else:
-            return Room("", self)  # TODO
+            return None
     
     def joinRoom(self, room: str, account = None):
         """
