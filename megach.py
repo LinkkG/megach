@@ -873,12 +873,14 @@ class WSConnection:
 
     def connect(self) -> bool:
         """ Iniciar la conexión con el servidor y llamar a _handshake() """
-        self._connectattempts += 1
-        self._sock = socket.socket()
-        self._sock.connect((self._server, self._port))  # TODO Si no hay internet hay error acá
-        self._sock.setblocking(False)
-        self._handShake()
-        return True
+        if not self._connected:
+            self._connectattempts += 1
+            self._sock = socket.socket()
+            self._sock.connect((self._server, self._port))  # TODO Si no hay internet hay error acá
+            self._sock.setblocking(False)
+            self._handShake()
+            return True
+        return False
 
     def _disconnect(self):
         """Privado: Solo usar para reconneción
