@@ -790,6 +790,7 @@ class WSConnection():
         @param port:
         @param origin:
         """
+        self._bgmode = 0
         self._connectattempts = 0
         self._connected = False
         self._currentaccount = [name, password]
@@ -812,6 +813,7 @@ class WSConnection():
         self._wlockbuf = b''  # Buffer de escritura bloqueado, se almacena aquí cuando el lock está activo
         self.mgr = mgr  # El dueño de esta conexión
         if mgr:  # Si el manager está activo iniciar la conexión directamente
+            self._bgmode = self.mgr.bgmode
             self.connect()
 
     @property
@@ -1299,7 +1301,6 @@ class Room(WSConnection):
         super().__init__(name = account[0], password = account[1])
         self._badge = 0
         self._banlist = dict()
-        self._bgmode = 0  # Mover al WSConnection para usar en el pm
         self._channel = 0
         self._currentaccount = account
         self._currentname = account[0]
@@ -2224,6 +2225,7 @@ class Gestor:
         self._user = User(self._name)
         self._tasks = set()
         self._pm = None
+        self.bgmode = False
         if pm:
             self._pm = PM(mgr = self, name = self.name, password = self.password)
 
@@ -2438,7 +2440,7 @@ class Gestor:
 
     def enableBg(self, activo = True):
         """Enable background if available."""
-        self.user._mbg = True
+        self.bgmode = activo
         for room in self.rooms:
             room.setBgMode(int(activo))
 
