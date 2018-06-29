@@ -620,7 +620,8 @@ class _User:
 
     def removeSessionId(self, room, sid):
         if room in self._sids:
-            self._sids[room].remove(sid)
+            if sid in self._sids[room]:
+                self._sids[room].remove(sid)
             if len(self._sids[room]) == 0:
                 del self._sids[room]
 
@@ -2119,6 +2120,7 @@ class Room(WSConnection):
             elif user.isanon:
                 self._callEvent('onAnonJoin', user, puid)
         else:  # 2 Account Change
+            # Quitar la cuenta anterior de la lista y agregar la nueva
             before = None
             if ssid in self._userdict:
                 before = self._userdict[ssid]
