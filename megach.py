@@ -51,7 +51,6 @@ import time
 import threading
 import urllib.parse as urlparse
 import urllib.request as urlreq
-from typing import Iterator  # TODO ELIMINAR
 from urllib.error import HTTPError, URLError
 
 ################################################################
@@ -123,7 +122,10 @@ def _getAnonId(puid: str, ts: str) -> str:
     @param ts: Tiempo de sesión en que se conectó el anon, debe ser un string con un número entero
     @return: Número con la id de anon
     """
-    ts = '3452' if not ts else ts.split('.')[0][-4:]
+    if not ts or len(ts) < 4:
+        ts = '3452'
+    else:
+        ts = ts.split('.')[0][-4:]
     if len(puid) > 7:
         puid = puid[4:8]
     __reg5 = ''
@@ -295,6 +297,7 @@ class WS:
     CLOSE = 8
     PING = 9
     VERSION = 13
+
     @staticmethod
     def genseckey():
         """Genera una clave de Seguridad Websocket"""
@@ -494,6 +497,7 @@ class WS:
             return None
         return headers
 
+
 def User(name: str, **kwargs):
     """
     Un def que representa a la clase _User. Si el usuario ya existe, mejor regresa ese
@@ -552,6 +556,7 @@ class _User:
 
     @property
     def fontFace(self) -> str:
+        """Estilo de la fuente, un entero en un string"""
         return self._fontFace
 
     @property
@@ -570,6 +575,7 @@ class _User:
 
     @property
     def name(self) -> str:
+        """Nombre del usuario"""
         return self._name
 
     @property
@@ -583,11 +589,12 @@ class _User:
 
     @property
     def rooms(self):
+        """Las salas en las que se encuentra el usuario."""
         return self._sids.keys()
 
     @property
-    def roomnames(self) -> Iterator[str]:  # TODO verificar si este tipo de typing es válido en qpython
-        """Lista de salas8"""
+    def roomnames(self):
+        """Lista de salas"""
         return [room.name for room in self._sids]
 
     def _getSessionIds(self, room = None):
@@ -626,6 +633,9 @@ class _User:
                 del self._sids[room]
 
     def setName(self, value):
+        """Reajusta el nombre de un usuario
+        # TODO para uso en participant 2. Al cambiar aquí vigilar _users
+        """
         self._name = value.lower()
         self._showname = value
 
@@ -684,6 +694,9 @@ class Message:
 
     @property
     def body(self):
+        """
+        Cuerpo del mensaje sin saltos de linea TODO quitar espacios extra
+        """
         return self._body.replace('\n', ' ').replace('  ', ' ')
 
     @property
@@ -692,6 +705,7 @@ class Message:
 
     @property
     def fontColor(self):
+        """Color de la fuente usada en el mensaje"""
         return self._fontColor
 
     @property
@@ -700,10 +714,12 @@ class Message:
 
     @property
     def fontSize(self):
+        """Tamaño de la fuente usada en el mensaje"""
         return self._fontSize
 
     @property
     def fullbody(self):
+        """Cuerpo completo del mensaje"""
         return self._body.strip()
 
     @property
@@ -712,6 +728,7 @@ class Message:
 
     @property
     def msgid(self):
+        """ID del mensaje en la sala"""
         return self._msgid
 
     @property
@@ -720,6 +737,7 @@ class Message:
 
     @property
     def puid(self):
+        """Id personal del usuario del mensaje"""
         return self._puid
 
     @property
@@ -728,6 +746,7 @@ class Message:
 
     @property
     def room(self):
+        """Sala en la que está el mensaje, puede ser PM"""
         return self._room
 
     @property
@@ -745,6 +764,7 @@ class Message:
 
     @property
     def time(self):
+        """Hora de envío del mensaje"""
         return self._time
 
     ####
@@ -774,9 +794,10 @@ class Message:
         self._room.deleteMessage(self)
 
 
-class WSConnection():
+class WSConnection:
     """
-    Base para manejar las conexiones con Mensajes y salas
+    Base para manejar las conexiones con Mensajes y salas.
+    No Instanciar directamente
     """
     BIGMESSAGECUT = False  # Si es True se manda solo un pedazo de los mensajes, false y se mandan todos
     MAXLEN = 2800  # 2900 ON PM IS > 12000
@@ -966,7 +987,12 @@ class WSConnection():
         nc = self.user.nameColor
         if not html:
             msg = html2.escape(msg, quote = False).replace('~', '&#126;')
-        msg = msg.replace('\t', '&nbsp;' * 3 + ' ').replace('  ', '&nbsp;' + ' ')
+        for x in 'b i u'.split():
+            msg = msg.replace('<%s>' % x, '<%s>' % x.upper()).replace('</%s>' % x, '</%s>' % x.upper())
+        # TODO comprobar  velocidad comparado con el otro
+        # msg = msg.replace("<b>", "<B>").replace("</b>", "</B>").replace("<i>", "<I>").replace("</i>", "</I>").replace(
+        #         "<u>", "<U>").replace("</u>", "</U>")
+        msg = msg.replace('\t', '&nbsp;' * 3 + ' ').replace('   ', ' ' + '&nbsp;' + ' ')  # TODO 3 en adelante
         if self.name == 'PM':
             formt = '<n{}/><m v="1"><g x{:0>2.2}s{}="{}">{}</g></m>'
             fc = fc[::2] if len(fc) == 6 else fc[:3]
@@ -1026,9 +1052,11 @@ class WSConnection():
         self._sendCommand('')
         self._callEvent('onPing')
 
-    def _rcmd_(self, pong):
-        """Al recibir un pong"""
-        self._callEvent('onPong')
+    def setBgMode(self, modo):
+        """Activar el BG"""
+        self._bgmode = modo
+        if self.connected:
+            self._sendCommand('msgbg', str(self._bgmode))
 
     def _sendCommand(self, *args):
         """
@@ -1057,10 +1085,19 @@ class WSConnection():
         else:
             self._wbuf += data
 
+    def _rcmd_(self, pong):
+        """Al recibir un pong"""
+        self._callEvent('onPong')
+
+    def _rcmd_premium(self, args):  # TODO el tiempo mostrado usa la hora del server
+        # TODO usar args para definir el estado premium y el tiempo
+        if self._bgmode and (args[0] == '210' or (isinstance(self, Room) and self._owner == self.user)):
+            self._sendCommand('msgbg', str(self._bgmode))
+
 
 class PM(WSConnection):
     """
-    Clase Base para la conexión con la mensajería privada de chatango
+    Clase Base para la conexiones con la mensajería privada de chatango
     """
 
     def __init__(self, mgr, name, password):
@@ -1090,6 +1127,7 @@ class PM(WSConnection):
 
     @property
     def blocklist(self):
+        """Lista de usuarios bloqueados en la sala"""
         return self._blocklist
 
     @property
@@ -1195,12 +1233,14 @@ class PM(WSConnection):
         @param user: Usuario al que enviar el mensaje
         @param msg: Mensaje que se envia (string)
         """
-        if isinstance(user, _User):  # TODO externalizar
-            user = user.name
-        msg = self._messageFormat(msg, html)
-        for unimsg in msg:
-            self._sendCommand("msg", user, unimsg)
-            self._callEvent('onPMMessageSend', User(user), unimsg)
+        if msg:
+            if isinstance(user, _User):  # TODO externalizar
+                user = user.name
+            msg = self._messageFormat(str(msg), html)
+            for unimsg in msg:
+                self._sendCommand("msg", user, unimsg)
+                self._callEvent('onPMMessageSend', User(user), unimsg)
+            return True
 
     def _write(self, data: bytes):
         if not self._wlock:
@@ -1213,6 +1253,7 @@ class PM(WSConnection):
             print(args)
         self._sendCommand("wl")  # TODO
         self._sendCommand("getblock")  # TODO
+        self._sendCommand("getpremium")
         self._connected = True
         self._callEvent('onPMConnect')
 
@@ -1320,6 +1361,7 @@ class Room(WSConnection):
         self._rbuf = b''
         self._server = getServer(name)  # TODO
         self._connectiontime = 0
+        self._recording = 0
         self._silent = False
         self._time = None
         self._timecorrection = 0
@@ -1353,6 +1395,7 @@ class Room(WSConnection):
 
     @property
     def alluserlist(self):
+        """Lista de todos los usuarios en la sala, incluyendo anons"""
         return list(self._userdict.values())
 
     @property
@@ -1361,6 +1404,7 @@ class Room(WSConnection):
 
     @property
     def badge(self):
+        """Insignia usada en la sala"""
         return self._badge
 
     @badge.setter
@@ -1387,6 +1431,10 @@ class Room(WSConnection):
 
     @property
     def currentname(self):
+        """
+        Nombre de usuario que el bot tiene en la sala
+        TODO carece de utilidad si se puede usar user.name
+        """
         return self._currentname
 
     @property
@@ -1400,6 +1448,7 @@ class Room(WSConnection):
 
     @property
     def info(self):
+        """Información de la sala, una lista [titulo,información]"""
         return self._info
 
     @property
@@ -1413,6 +1462,7 @@ class Room(WSConnection):
 
     @property
     def modnames(self):
+        """Nombres de los moderadores en la sala"""
         return [x.name for x in self.mods]
 
     @property
@@ -1426,6 +1476,7 @@ class Room(WSConnection):
 
     @property
     def ownername(self):
+        """Nombre del dueño de la sala"""
         return self.owner.name
 
     @property
@@ -1644,16 +1695,10 @@ class Room(WSConnection):
             user = user.name
         self._sendCommand('removemod:{}', user)
 
-    def setBgMode(self, modo):
-        """Activar el BG"""
-        self._bgmode = modo
-        if self.connected:
-            self._sendCommand('msgbg', str(self._bgmode))
-
     def setRecordingMode(self, modo):
-        self._recording = modo
+        self._recording = int(modo)
         if self.connected:
-            self._sendCommand('msgmedia', str(self._bgmode))
+            self._sendCommand('msgmedia', str(self._recording))
 
     def setSilent(self, silent):  # TODO
         self._silent = silent
@@ -1722,7 +1767,7 @@ class Room(WSConnection):
                     )
             partes.extend([
                 ['--' + boundary,
-                 'Content-Disposition: file; name="Filedata"; filename="%s"' % (fullpic),
+                 'Content-Disposition: file; name="Filedata"; filename="%s"' % fullpic,
                  'Content-Type: %s' % mimetypes.guess_type(fullpic)[0],
                  '',
                  str(open(fullpic, "rb").read()),
@@ -1806,6 +1851,7 @@ class Room(WSConnection):
         unknown2 = args[8]
         rawmsg = ":".join(args[9:])
         badge = 0
+        # TODO reemplazar por los flags
         if channel and channel.isdigit():
             channel = int(channel)
             if channel < 256:  # Canal Normal
@@ -1830,8 +1876,6 @@ class Room(WSConnection):
             if name == "#":
                 # TODO problemas acá, se debe encontrar el tiempo de conexión con esa puid
                 # name=[u.name for u in self.userlist if u.sessionids==p]
-                if n == '000':
-                    n = ''
                 name = "!" + getanonname(puid, n)
         else:
             if n:
@@ -1864,8 +1908,10 @@ class Room(WSConnection):
                       )
         self._mqueue[msgnum] = msg
 
-    def _rcmd_blocked(self, args):  # TODO
-        user = User(args[3])
+    def _rcmd_blocked(self, args):  # TODO Que era todo esto?
+        user = None
+        if args[3]:
+            user = User(args[3])
         target = None
         if args[2] == "":
             msx = [msg for msg in self._history if msg.unid == args[0]]
@@ -1979,8 +2025,6 @@ class Room(WSConnection):
             nameColor = None
             name = "#" + tname
             if name == "#":
-                if n == '000':
-                    n = ''
                 name = "!" + getanonname(puid, n)
         else:
             if n:
@@ -2138,11 +2182,6 @@ class Room(WSConnection):
             user.addPersonalUserId(self, puid)
             self._userdict[ssid] = user
 
-    def _rcmd_premium(self, args):  # TODO el tiempo mostrado usa la hora del server
-        # TODO usar args para definir el estado premium y el tiempo
-        if self._bgmode:
-            self._sendCommand('msgbg', str(self._bgmode))
-
     def _rcmd_show_fw(self, args):  # TODO
         self._callEvent('onFloodWarning')
 
@@ -2217,7 +2256,7 @@ class Gestor:
     PMHost = "c1.chatango.com"
 
     def __repr__(self):
-        return "<%s>" % (self.__class__.__name__)
+        return "<%s>" % self.__class__.__name__
 
     def __init__(self, name: str = None, password: str = None, pm: bool = None, accounts = None):
         self._accounts = accounts
@@ -2304,7 +2343,7 @@ class Gestor:
     class _Task:
         def __str__(self):
             return '<%s Task: "%s" [%s]>' % (
-            'Interval' if self.isInterval else 'Timeout', self.func.__name__, self.timeout)
+                'Interval' if self.isInterval else 'Timeout', self.func.__name__, self.timeout)
 
         def __init__(self, mgr, func = None, timeout = None):
             """
@@ -2449,6 +2488,8 @@ class Gestor:
         self.bgmode = activo
         for room in self.rooms:
             room.setBgMode(int(activo))
+        if self.pm:
+            self.pm.setBgMode(int(activo))
 
     def enableRecording(self, activo = True):
         """Enable recording if available."""
@@ -2457,15 +2498,15 @@ class Gestor:
             room.setRecordingMode(int(activo))
 
     def setFontColor(self, hexfont):
-        self.user._fontColor = hexfont
+        self.user._fontColor = str(hexfont)
 
     def setFontFace(self, facenum):
         """
         # TODO usar el nombre
-        @param facenum: El número de la fuente
+        @param facenum: El número de la fuente en un string
         """
 
-        self.user._fontFace = facenum
+        self.user._fontFace = str(facenum)
 
     def setFontSize(self, sizenum):
         """Cambiar el tamaño de la fuente
@@ -2526,7 +2567,13 @@ class Gestor:
                 print('Task error {}: {}'.format(task.func, e))
                 task.cancel()
 
-    def onAnonBan(self, room, user, target):  # TODO documentar
+    def onAnonBan(self, room, user, target):
+        """
+        Al ser baneado un anon en la sala
+        @param room: Sala donde ocurre
+        @param user: Usuario que banea
+        @param target: puede ser un User o None TODO debería ser un user
+        """
         pass
 
     def onAnonJoin(self, room, user, ssid):
@@ -2541,10 +2588,20 @@ class Gestor:
     def onBan(self, room, user, target):
         pass
 
-    def onBanlistUpdate(self, rom):  # TODO comentar
+    def onBanlistUpdate(self, room):
+        """
+        Al ser actualizada la lista de ban de la sala
+        @param room: Sala donde ocurre el cambio
+        """
         pass
 
-    def onClearall(self, room, result):  # TODO Comentar
+    def onClearall(self, room, result):
+        """
+        Al ser borrados todos los mensajes de la sala
+        @param room: Sala donde se han borrado los mensajes
+        @param result: Resultado, puede ser 'ok' o 'error'. El error solo aparece si el bot ha sido quien solicita el
+        borrado
+        """
         pass
 
     def onConnect(self, room):
@@ -2580,11 +2637,10 @@ class Gestor:
         """
         pass
 
-    def onFlagsUpdate(self, room):  # TODO documentar
+    def onFlagsUpdate(self, room):
         """
         Cuando cambian las reglas internas de una sala
         @param room: Sala donde ocurre el cambio
-        @return:
         """
         pass
 
@@ -2611,7 +2667,14 @@ class Gestor:
         """
         pass
 
-    def onHistoryMessage(self, room, user, message):  # TODO documentar
+    def onHistoryMessage(self, room, user, message):
+        """
+        Al cargar un mensaje anterior a la conexión del bot en la sala. Util para mantener registrado hasta los
+        momentos en los que no está el bot
+        @param room: Sala donde se cargó el mensaje
+        @param user: Usuario del mensaje
+        @param message: El mensaje cargado
+        """
         pass
 
     def onJoin(self, room, user, ssid):
