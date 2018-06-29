@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.8.4
+Version: M1.8.5
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -268,6 +268,7 @@ def _unescape_html(args: str) -> str:
     args = args.replace('&quot;', '"')
     args = args.replace('&nbsp;', ' ')
     args = args.replace("&amp;", "&")  # Esto debe ir al final
+    args = args.replace('\r', '\n')
     return args
     # o.o &amp; &#39; &quot; &amp;amp; &amp;#39; &amp;quot;
 
@@ -682,7 +683,7 @@ class Message:
 
     @property
     def body(self):
-        return self._body.replace('\n', '').replace('  ', ' ')
+        return self._body.replace('\n', ' ').replace('  ', ' ')
 
     @property
     def channel(self):
@@ -1240,6 +1241,9 @@ class PM(WSConnection):
         user = User(args[0])
         body = _strip_html(":".join(args[5:]))
         self._callEvent("onPMOfflineMessage", user, body)
+
+    def _rcmd_reload_profile(self, args):  # TODO completar
+        pass
 
     def _rcmd_track(self, args):  # TODO
         pass
