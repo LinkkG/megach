@@ -2621,6 +2621,15 @@ class Gestor:
         """
         pass
 
+    def onMessageDelete(self, room, user, message):
+        """
+        Al borrarse un mensaje en una sala
+        @param room: La sala donde se ha borrado el mensaje
+        @param user: El usuario del mensaje
+        @param message: El mensaje borrado
+        """
+        pass
+
     def onModAdd(self, room, user):
         pass
 
