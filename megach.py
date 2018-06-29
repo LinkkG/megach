@@ -947,6 +947,7 @@ class WSConnection():
             try:  # TODO no se supone que ocurran, si lo hacen hay que revisar el proceso
                 getattr(self, func)(args)
             except Exception as e:
+                self._callEvent('onProcessError', func, e)
                 print('[%s][%s] ERROR ON PROCESS "%s" "%s"' % (time.strftime('%I:%M:%S %p'), self.name, func, e),
                       file = sys.stderr)
         elif debug:
@@ -1659,6 +1660,17 @@ class Room(WSConnection):
         else:
             return False
 
+    def updateFlags(self, flag = None, enabled = True):
+        if flag != None:
+            if self.flags and flag in dir(self.flags):
+                if flag in GroupFlags:
+                    if enabled:
+                        self._sendCommand("updategroupflags", str(GroupFlags[flag]), '0')
+                    else:
+                        self._sendCommand("updategroupflags", '0', str(GroupFlags[flag]))
+                    return True
+        return False
+
     def updateInfo(self, title = '', info = ''):
         title = title or self._info[0]
         info = info or self._info[1]
@@ -1891,13 +1903,15 @@ class Room(WSConnection):
 
     def _rcmd_deleteall(self, args):  # TODO
         user = None
+        msgs = list()
         for msgid in args:
             msg = self._msgs.get(msgid)
             if msg and msg in self._history:
                 self._history.remove(msg)
                 user = msg.user
                 msg.detach()
-        self._callEvent('onDeleteUser', user)
+                msgs.append(msg)
+        self._callEvent('onDeleteUser', user, msgs)
 
     def _rcmd_denied(self, args):  # TODO
         pass
@@ -1937,8 +1951,8 @@ class Room(WSConnection):
 
     def _rcmd_getpremium(self, args):
         # TODO
-        self.mgr.setPremium(args)
-        self._sendCommand('msgbg', str(self._bgmode))
+        if self._bgmode:
+            self._sendCommand('msgbg', str(self._bgmode))
 
     def _rcmd_groupflagsupdate(self, args):
         flags = args[0]
@@ -2490,14 +2504,6 @@ class Gestor:
         # for x in self._rooms: TODO
         #    x.user.setnameColor(hexcolor)
 
-    def setPremium(self, args):
-        """
-        # TODO detectar el estado de mi cuenta
-        @param args:
-        @return:
-        """
-        pass
-
     def _tick(self):
         now = time.time()
         for task in set(self._tasks):
@@ -2541,6 +2547,12 @@ class Gestor:
         pass
 
     def onDeleteUser(self, room, user, msgs):
+        """
+        Cuando se borran todos los mensajes de un usuario específico
+        @param room: Sala donde se borran los mensajes
+        @param user: Usuario al que se le borran los mensajes
+        @param msgs: Lista de mensajes borrados
+        """
         pass
 
     def onDisconnect(self, room):
@@ -2719,6 +2731,15 @@ class Gestor:
         """
         Al recibir un pong en una sala
         @param room: La sala en la que se recibe el pong
+        """
+        pass
+
+    def onProcessError(self, room, func, e):
+        """
+        Cuando ocurre un error en un proceso
+        @param room: Sala donde ocurre el error (puede ser PM)
+        @param func: Función donde ocurrió el error
+        @param e: Excepción generada
         """
         pass
 
