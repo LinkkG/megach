@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.8.3
+Version: M1.8.4
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -26,13 +26,6 @@ Información de contacto:
         # Tu usuario y tu bot (opcional)
         # Linea de este archivo, nombre del método o sección de la que hablas
         # Descripción de tu problema o solicitud
-Megamaster12 changelog
-    HTML_CODES
-    Added channel support for reading and messaging
-    Added mod channel support
-    badge support for Room and Message
-    Added websocket support for rooms
-        Now can listen mod channel and all received commands
 ################################################################
 # License
 ################################################################
@@ -295,15 +288,12 @@ class WS:
     """
     Agrupamiento de métodos estáticos para encodear y chequear frames en conexiones del protocolo WebSocket
     """
-    # TODO revisar
     FrameInfo = namedtuple("FrameInfo", ["fin", "opcode", "masked", "payload_length"])
     CONTINUATION = 0
     TEXT = 1
-    BINARY = 2
     CLOSE = 8
     PING = 9
     VERSION = 13
-
     @staticmethod
     def genseckey():
         """Genera una clave de Seguridad Websocket"""
@@ -657,7 +647,6 @@ class Message:
         self._ip = None
         self._unid = ""
         self._puid = ""
-        self._uid = ""  # TODO ELIMINAR
         self._nameColor = "000"
         self._fontSize = 12
         self._fontFace = "0"
@@ -783,7 +772,7 @@ class Message:
         self._room.deleteMessage(self)
 
 
-class WSConnection:
+class WSConnection():
     """
     Base para manejar las conexiones con Mensajes y salas
     """
@@ -928,8 +917,8 @@ class WSConnection:
             "Connection: Upgrade\r\n"
             "Upgrade: websocket\r\n"
             "Sec-WebSocket-Key: {}\r\n"
-            "Sec-WebSocket-Version: 13\r\n\r\n"
-        ).format(self._server, self._port, self._origin, WS.genseckey()).encode()
+            "Sec-WebSocket-Version: {}\r\n\r\n"
+        ).format(self._server, self._port, self._origin, WS.genseckey(), WS.VERSION).encode()
         self._wbuf = self._headers
         self._setWriteLock(True)
         self._pingTask = self.mgr.setInterval(self.PINGINTERVAL, self.ping)
@@ -1329,6 +1318,7 @@ class Room(WSConnection):
         self._timecorrection = 0
         self._info = ['', '']
         self._owner = None
+        self._unbanlist = dict()
         self._user = None
         self._users = deque()  # TODO reemplazar userlist con userdict y userhistory
         self._userdict = dict()  # TODO {ssid:{user},}
@@ -1338,7 +1328,6 @@ class Room(WSConnection):
         self._userlist = list()
         # self.imsgs_drawn = 0 # TODO
         # self.imsgs_rendered = False # TODO
-        self.lastmsgnum = 0
         self.mgr = mgr
         self.msgs = dict()  # TODO esto y history es lo mismo?
         self.status = None
@@ -2292,14 +2281,18 @@ class Gestor:
 
     class _Task:
         def __str__(self):
-            return '<Task: "%s" [%s]>' % (self.func.__name__, self.timeout)
+            return '<%s Task: "%s" [%s]>' % (
+            'Interval' if self.isInterval else 'Timeout', self.func.__name__, self.timeout)
 
-        def __init__(self, mgr):
+        def __init__(self, mgr, func = None, timeout = None):
             """
             Inicia una tarea nueva
             @param mgr: El dueño de esta tarea y el que la mantiene con vida
             """
+            self.func = func
+            self.isInterval = False
             self.mgr = mgr
+            self.timeout = timeout
 
         def cancel(self):
             """Sugar for removeTask."""
@@ -2701,6 +2694,15 @@ class Gestor:
         """
         Al enviar un ping a una sala
         @param room: La sala en la que se envía el ping
+        """
+        pass
+
+    def onPMOfflineMessage(self, pm, user, body):
+        """
+        Al recibir un mensaje cuando no se estuvo conectado
+        @param pm: El PM
+        @param user: El usuario que envió el mensaje
+        @param body: El mensaje
         """
         pass
 
