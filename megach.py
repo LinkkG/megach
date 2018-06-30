@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.8.5
+Version: M1.9.0
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -56,7 +56,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-debug = False
+debug = True
 ################################################################
 # Cosas del servidor, las cuentas y el manejo de mods
 ################################################################
@@ -117,17 +117,15 @@ def _genUid() -> str:
 
 def _getAnonId(puid: str, ts: str) -> str:
     """
-    Obtener una id de anon
-    @param puid: PUID del usuario de 8 o más cifras.
-    @param ts: Tiempo de sesión en que se conectó el anon, debe ser un string con un número entero
+    Obtener una id de anon.
+    @param puid: PUID del usuario de 4 cifras.
+    @param ts: Tiempo de sesión en que se conectó el anon debe ser un string con un entero
     @return: Número con la id de anon
     """
     if not ts or len(ts) < 4:
         ts = '3452'
     else:
         ts = ts.split('.')[0][-4:]
-    if len(puid) > 7:
-        puid = puid[4:8]
     __reg5 = ''
     __reg1 = 0
     while __reg1 < len(puid):
@@ -139,6 +137,33 @@ def _getAnonId(puid: str, ts: str) -> str:
     return __reg5
 
 
+def convertPM(msg: str):  # TODO Medir velocidad y acelerar
+    fuentes = re.findall("(<f.*?>)", msg)
+    left, found, right = '', '', msg
+    counter = 0
+    msg = ''
+    while right and fuentes:
+        left, found, right = right.partition(fuentes[0])
+        s, c, f = _parseFont(found)
+        s = s or '11'
+        c = c or '00F'
+        f = f or '1'
+        c = c[::2] if len(c) == 6 else c[:3]
+        msg += left
+        if counter:
+            msg += '</g>'
+        counter += 1
+        msg += '<g x{:0>2.2}s{}="{}">'.format(s, c, f)
+        if len(fuentes) > 1:
+            fuentes = fuentes[1:]
+        else:
+            fuentes = []
+    msg += right
+    if counter:
+        msg += '</g>'
+    return msg
+
+
 def getanonname(puid: str, tssid: str) -> str:
     """
     Regresa el nombre de un anon usando su numero y tiempo de conexión
@@ -146,7 +171,7 @@ def getanonname(puid: str, tssid: str) -> str:
     @param tssid: El tiempo de inicio de sesión para el anon
     @return: String con el nombre de usuario del anon
     """
-    return 'anon' + _getAnonId(puid, tssid).zfill(4)
+    return 'anon' + _getAnonId(puid.zfill(8)[4:8], tssid).zfill(4)
 
 
 def getServer(group: str) -> str:
@@ -244,13 +269,11 @@ def _strip_html(msg: str) -> str:
 def _parseFont(f: str) -> [str, str, str]:
     """
     Lee el contendido de un etiqueta f y regresa
-    color fuente y tamaño
-    TODO revisar posibles errores
-    ' xSZCOL="FONT"'
-    :param f: El texto con la etiqueta f incrustada
-    :return: Fuente, Color, Tamaño
+    tamaño color y fuente
+    @param f: El texto con la etiqueta f incrustada
+    @return: Tamaño, Color, Fuente
     """
-    matchs = re.findall('x(\d+){0,2}([0-9a-fA-F]{3,6})="(\d)"', f)
+    matchs = re.findall('x(\d+){0,2}([0-9a-fA-F]{3,6})=["\'](\d)["\']', f)
     if matchs and len(matchs[0]) == 3:
         return matchs[0]
     else:
@@ -836,7 +859,7 @@ class WSConnection:
         self._wlockbuf = b''  # Buffer de escritura bloqueado, se almacena aquí cuando el lock está activo
         self.mgr = mgr  # El dueño de esta conexión
         if mgr:  # Si el manager está activo iniciar la conexión directamente
-            self._bgmode = self.mgr.bgmode
+            self._bgmode = int(self.mgr.bgmode)
             self.connect()
 
     @property
@@ -899,6 +922,7 @@ class WSConnection:
     def _disconnect(self):
         """Privado: Solo usar para reconneción
         Cierra la conexión y detiene los pings, pero el objeto sigue existiendo dentro de su mgr"""
+        self._connected = False
         if self._sock is not None:
             self._sock.close()
         # TODO do i need to clear session ids?
@@ -942,8 +966,8 @@ class WSConnection:
             "Connection: Upgrade\r\n"
             "Upgrade: websocket\r\n"
             "Sec-WebSocket-Key: {}\r\n"
-            "Sec-WebSocket-Version: {}\r\n\r\n"
-        ).format(self._server, self._port, self._origin, WS.genseckey(), WS.VERSION).encode()
+            "Sec-WebSocket-Version: {}\r\n"
+            "\r\n").format(self._server, self._port, self._origin, WS.genseckey(), WS.VERSION).encode()
         self._wbuf = self._headers
         self._setWriteLock(True)
         self._pingTask = self.mgr.setInterval(self.PINGINTERVAL, self.ping)
@@ -992,16 +1016,18 @@ class WSConnection:
         # TODO comprobar  velocidad comparado con el otro
         # msg = msg.replace("<b>", "<B>").replace("</b>", "</B>").replace("<i>", "<I>").replace("</i>", "</I>").replace(
         #         "<u>", "<U>").replace("</u>", "</U>")
-        msg = msg.replace('\t', '&nbsp;' * 3 + ' ').replace('   ', ' ' + '&nbsp;' + ' ')  # TODO 3 en adelante
         if self.name == 'PM':
             formt = '<n{}/><m v="1"><g x{:0>2.2}s{}="{}">{}</g></m>'
             fc = fc[::2] if len(fc) == 6 else fc[:3]
+            msg = msg.replace('&nbsp;', ' ')  # fix
+            msg = convertPM(msg)  # TODO No ha sido completamente probado
         else:  # Room
+            msg = msg.replace('\t', '&nbsp;' * 3 + ' ').replace('   ', ' ' + '&nbsp;' + ' ')  # TODO 3 en adelante
             formt = '<n{}/><f x{:0>2.2}{}="{}">{}'
             if self.user.isanon:  # El color del nombre es el tiempo de conexión y no hay fuente
                 nc = str(self._connectiontime).split('.')[0][-4:]
                 formt = '<n{0}/>{4}'
-        if len(msg) > self.MAXLEN:
+        if len(msg) > self.MAXLEN:  # TODO el tamaño puede ser afectado por multifuentes
             if self.BIGMESSAGECUT:
                 msg = msg[:self.MAXLEN]
             else:
@@ -1123,6 +1149,7 @@ class PM(WSConnection):
         self._status = dict()
         self.mgr = mgr
         if self.mgr:
+            self._bgmode = int(self.mgr.bgmode)
             self.connect()
 
     @property
@@ -1249,12 +1276,12 @@ class PM(WSConnection):
             self._wlockbuf += data
 
     def _rcmd_OK(self, args):
+        self._connected = True
         if args:
             print(args)
         self._sendCommand("wl")  # TODO
         self._sendCommand("getblock")  # TODO
         self._sendCommand("getpremium")
-        self._connected = True
         self._callEvent('onPMConnect')
 
     def _rcmd_block_list(self, args):  # TODO
@@ -1287,8 +1314,16 @@ class PM(WSConnection):
     def _rcmd_reload_profile(self, args):  # TODO completar
         pass
 
-    def _rcmd_track(self, args):  # TODO
+    def _rcmd_seller_name(self, args):  # TODO completar
         pass
+
+    def _rcmd_track(self, args):  # TODO completar
+        pass
+
+    def _rcmd_time(self, args):
+        """Se recibe el tiempo del servidor y se calcula el valor de correccion"""
+        self._connectiontime = args[0]
+        self._correctiontime = float(self._connectiontime) - time.time()
 
     def _rcmd_toofast(self, args):  # TODO esto solo debería parar un momento
         self.disconnect()
@@ -1373,14 +1408,14 @@ class Room(WSConnection):
         self._userdict = dict()  # TODO {ssid:{user},}
         self._userhistory = deque(maxlen = 10)  # TODO {{time: <user>},}
         # self.user_id = None TODO
-        self._userCount = 0
-        self._userlist = list()
+        self._usercount = 0
         # self.imsgs_drawn = 0 # TODO
         # self.imsgs_rendered = False # TODO
         self.mgr = mgr
         self.msgs = dict()  # TODO esto y history es lo mismo?
         self.status = None
         if self.mgr:
+            self._bgmode = int(self.mgr.bgmode)
             super().connect()
         self._maxHistoryLength = Gestor.maxHistoryLength  # Por que no guardar un número por sala ?)
         self._history = deque(maxlen = self._maxHistoryLength)
@@ -1400,7 +1435,7 @@ class Room(WSConnection):
 
     @property
     def allusernames(self):
-        return [x.name for x in set(self._userdict.values())]
+        return sorted([x.name for x in set(self._userdict.values())])
 
     @property
     def badge(self):
@@ -1513,7 +1548,7 @@ class Room(WSConnection):
         if self.flags.NOCOUNTER:
             return len(self.userlist)
         else:
-            return self._userCount
+            return self._usercount
 
     @property
     def usernames(self):
@@ -1540,7 +1575,7 @@ class Room(WSConnection):
             ul = map(lambda x: x.user,
                      self._history[-memoria:])  # TODO memoria no debe ser mayor a la cantidad de elementos
         else:
-            ul = self._userlist
+            ul = list(set([x for x in self._userdict.values() if not x.isanon]))
         if unica:
             return list(set(ul))
         return ul
@@ -1712,7 +1747,7 @@ class Room(WSConnection):
             return False
 
     def updateFlags(self, flag = None, enabled = True):
-        if flag != None:
+        if flag:
             if self.flags and flag in dir(self.flags):
                 if flag in GroupFlags:
                     if enabled:
@@ -1973,7 +2008,6 @@ class Room(WSConnection):
 
     def _rcmd_g_participants(self, args):
         self._userdict = dict()
-        self._userlist = list()
         args = ':'.join(args).split(";")
         for data in args:
             data = data.split(':')  # Lista de un solo usuario
@@ -1994,8 +2028,6 @@ class Room(WSConnection):
                 user.setName(name)
             user.addSessionId(self, ssid)
             self._userdict[ssid] = user
-            if not isanon:
-                self._userlist.append(user)
 
     def _rcmd_gparticipants(self, args):
         """Comando viejo de chatango, ya no se usa, pero aún puede seguirlo enviando"""
@@ -2098,7 +2130,7 @@ class Room(WSConnection):
     def _rcmd_n(self, args):  # TODO
         """Cambió la cantidad de usuarios en la sala"""
         if not self.flags.NOCOUNTER:
-            self._userCount = int(args[0], 16)
+            self._usercount = int(args[0], 16)
             # assert not self._userdict or len(self._userdict) == self._userCount, 'Warning count doesnt match'  # TODO
             self._callEvent("onUserCountChange")
 
@@ -2148,9 +2180,7 @@ class Room(WSConnection):
         user = User(name, puid = puid)
         if cambio == '0':  # Leave
             user.removeSessionId(self, ssid)  # Quitar la id de sesión activa
-            if user in self._userlist:
-                self._userlist.remove(user)
-                self._callEvent('onLeave', user, puid)
+            self._callEvent('onLeave', user, puid)
             if ssid in self._userdict:  # Remover el usuario de la sala
                 self._userhistory.append([contime, self._userdict.pop(ssid)])
             if user.isanon:
@@ -2158,13 +2188,13 @@ class Room(WSConnection):
         elif cambio == '1':  # Join
             user.addSessionId(self, ssid)  # Agregar la sesión al usuario
             self._userdict[ssid] = user  # Agregar la sesión a la sala
-            if not user.isanon and user not in self._userlist:
+            if not user.isanon and user not in self.userlist:
                 self._callEvent('onJoin', user, puid)
-                self._userlist.append(user)
             elif user.isanon:
                 self._callEvent('onAnonJoin', user, puid)
         else:  # 2 Account Change
             # Quitar la cuenta anterior de la lista y agregar la nueva
+            # TODO conectar cuentas que han cambiado usando este método
             before = None
             if ssid in self._userdict:
                 before = self._userdict[ssid]
@@ -2172,11 +2202,9 @@ class Room(WSConnection):
                 if user.isanon:  # Anon Login
                     self._callEvent('onAnonLogin', user, puid)  # TODO
                 else:  # User Login
-                    self._userlist.append(user)
                     self._callEvent('onUserLogin', user, puid)
             elif not before.isanon:  # Logout
-                if before in self._userlist:
-                    self._userlist.remove(before)
+                if before in self.userlist:
                     self._userhistory.append([contime, before])
                     self._callEvent('onUserLogout', user, puid)
             user.addPersonalUserId(self, puid)
