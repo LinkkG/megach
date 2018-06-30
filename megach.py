@@ -140,7 +140,6 @@ def _getAnonId(puid: str, ts: str) -> str:
 def convertPM(msg: str):  # TODO Medir velocidad y acelerar
     fuentes = re.findall("(<f.*?>)", msg)
     left, found, right = '', '', msg
-    counter = 0
     msg = ''
     while right and fuentes:
         left, found, right = right.partition(fuentes[0])
@@ -149,18 +148,13 @@ def convertPM(msg: str):  # TODO Medir velocidad y acelerar
         c = c or '00F'
         f = f or '1'
         c = c[::2] if len(c) == 6 else c[:3]
-        msg += left
-        if counter:
-            msg += '</g>'
-        counter += 1
+        msg += left + '</g>'
         msg += '<g x{:0>2.2}s{}="{}">'.format(s, c, f)
         if len(fuentes) > 1:
             fuentes = fuentes[1:]
         else:
             fuentes = []
     msg += right
-    if counter:
-        msg += '</g>'
     return msg
 
 
