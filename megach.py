@@ -138,6 +138,12 @@ def _getAnonId(puid: str, ts: str) -> str:
 
 
 def convertPM(msg: str):  # TODO Medir velocidad y acelerar
+    """
+    Convertir las fuentes de un mensaje normal en fuentes para el PM
+    Util para usar múltiples fuentes
+    @param msg: Mensaje con fuentes incrustadas
+    @return: Mensaje con etiquetas f convertidas a g
+    """
     fuentes = re.findall("(<f.*?>)", msg)
     left, found, right = '', '', msg
     msg = ''
@@ -217,7 +223,7 @@ Channels = {
     }  # TODO darle uso
 
 
-def _clean_message(msg: str) -> [str, str, str]:
+def _clean_message(msg: str, pm: bool = False) -> [str, str, str]:
     """
     TODO Revisar carácteres comilla y escapes en mensajes
     Clean a message and return the message, n tag and f tag.
@@ -227,16 +233,20 @@ def _clean_message(msg: str) -> [str, str, str]:
     @returns: cleaned message, n tag contents, f tag contents
     """
     n = re.search("<n(.*?)/>", msg)
+    if pm:
+        f = re.search("<f(.*?)>", msg)
+        msg = re.sub("<f.*?>", "", msg)
+    else:
+        f = re.search("<g(.*?)>", msg)
+        msg = re.sub("<g.*?>", "", msg)
     if n:
         n = n.group(1)
-    f = re.search("<f(.*?)>", msg)
     if f:
         f = f.group(1)
     msg = re.sub("<n.*?/>", "", msg)
-    msg = re.sub("<f.*?>", "", msg)
     msg = _strip_html(msg)
     msg = _unescape_html(msg)
-    return msg, n, f
+    return msg, n or '', f or ''
 
 
 def _strip_html(msg: str) -> str:
@@ -260,14 +270,17 @@ def _strip_html(msg: str) -> str:
         return "".join(ret)
 
 
-def _parseFont(f: str) -> [str, str, str]:
+def _parseFont(f: str, pm = False) -> [str, str, str]:
     """
     Lee el contendido de un etiqueta f y regresa
     tamaño color y fuente
     @param f: El texto con la etiqueta f incrustada
     @return: Tamaño, Color, Fuente
     """
-    matchs = re.findall('x(\d+){0,2}([0-9a-fA-F]{3,6})=["\'](\d)["\']', f)
+    if pm:
+        matchs = re.findall('x(\d+){0,2}s([0-9a-fA-F]{3,6})=["\'](\d)["\']', f)
+    else:
+        matchs = re.findall('x(\d+){0,2}([0-9a-fA-F]{3,6})=["\'](\d)["\']', f)
     if matchs and len(matchs[0]) == 3:
         return matchs[0]
     else:
@@ -496,7 +509,6 @@ class WS:
             headers = {"host": "chatango.com", "origin": "http://st.chatango.com"}
         pet = urlreq.Request(url, data = data,
                              headers = headers)
-        headers = None
         try:
             resp = urlreq.urlopen(pet)
             headers = resp.headers
@@ -538,6 +550,12 @@ class _User:
     Clase que representa a un usuario de chatango
     Iniciarlo sin el guion bajo para evitar inconvenientes
     """
+
+    def __radd__(self, other):
+        return str(other) + self.name
+
+    def __add__(self, other):
+        return self.name + str(other)
 
     def __str__(self):
         return self.showname
@@ -583,6 +601,7 @@ class _User:
 
     @property
     def ip(self) -> str:
+        """Ip del usuario, puede ser un string vacío"""
         return self._ip
 
     @property
@@ -602,12 +621,13 @@ class _User:
 
     @property
     def showname(self) -> str:
+        """Nombre visible del usuario, excluye los ! y # en los anon"""
         return self._showname.strip('!#')
 
     @property
-    def rooms(self):
+    def rooms(self) -> list:
         """Las salas en las que se encuentra el usuario."""
-        return self._sids.keys()
+        return list(self._sids.keys())
 
     @property
     def roomnames(self):
@@ -694,7 +714,7 @@ class Message:
         return self.body + str(otro)
 
     def __radd__(self, otro):
-        return self.body + str(otro)
+        return str(otro) + self.body
 
     def __repr__(self):
         return '<Message>'
@@ -707,6 +727,7 @@ class Message:
     ####
     @property
     def badge(self):
+        """Insignia del mensaje, Ninguna, Mod, Staff son 0 1 o 2"""
         return self._badge
 
     @property
@@ -727,6 +748,7 @@ class Message:
 
     @property
     def fontFace(self):
+        """Estilo de la fuente en el mensaje, numero en string"""
         return self._fontFace
 
     @property
@@ -750,6 +772,7 @@ class Message:
 
     @property
     def nameColor(self):
+        """Color del nombre de usuario en el mensaje"""
         return self._nameColor
 
     @property
@@ -768,6 +791,7 @@ class Message:
 
     @property
     def uid(self):
+        """Id del usuario del mensaje TODO """
         return self._puid
 
     @property
@@ -782,7 +806,7 @@ class Message:
     @property
     def time(self):
         """Hora de envío del mensaje"""
-        return self._time
+        return time.gmtime(float(self._time))
 
     ####
     # Attach/detach
@@ -890,6 +914,7 @@ class WSConnection:
 
     @property
     def time(self):
+        """Tiempo del servidor"""
         return time.gmtime(time.time() + self._correctiontime)
 
     @property
@@ -1156,6 +1181,9 @@ class PM(WSConnection):
         """Mis contactos en el PM"""
         return self._contacts
 
+    def contactnames(self):
+        return [x.name for x in self.contacts]
+
     @property
     def _getStatus(self):
         # TODO
@@ -1201,6 +1229,8 @@ class PM(WSConnection):
 
     def addContact(self, user):  # TODO
         """add contact"""
+        if isinstance(user, str):  # TODO externalizar
+            user = User(user)
         if user not in self._contacts:
             self._sendCommand("wladd", user.name)
             self._contacts.add(user)
@@ -1286,8 +1316,8 @@ class PM(WSConnection):
             self._blocklist.add(User(name))
 
     def _rcmd_DENIED(self, args):  # TODO
-        self._disconnect()
         self._callEvent("onLoginFail")
+        self._disconnect()
 
     def _rcmd_idleupdate(self, args):  # TODO
         pass
@@ -1296,9 +1326,31 @@ class PM(WSConnection):
         self.disconnect()
 
     def _rcmd_msg(self, args):  # msg TODO
-        user = User(args[0])
-        body = _unescape_html(_strip_html(":".join(args[5:])))
-        self._callEvent("onPMMessage", user, body)
+        name = args[0] or args[1]  # Usuario o tempname
+        if not name:
+            name = args[2]  # Anon es unknown
+        user = User(name)  # Usuario
+        mtime = float(args[3]) - self._correctiontime  # 1530420101.72 Time TODO corregir el tiempo
+        unknown2 = args[4]  # 0 TODO what is this?
+        rawmsg = ':'.join(args[5:])  # Mensaje
+        body, n, f = _clean_message(rawmsg, pm = True)
+        nameColor = n or None
+        fontSize, fontColor, fontFace = _parseFont(f)
+        msg = Message(
+                body = body,
+                fontColor = fontColor,
+                fontFace = fontFace,
+                fontSize = fontSize or '11',
+                nameColor = nameColor,
+                puid = None,
+                raw = rawmsg,
+                room = self,
+                time = mtime,
+                unid = None,
+                unknown2 = unknown2,
+                user = user
+                )
+        self._callEvent("onPMMessage", user, msg)
 
     def _rcmd_msgoff(self, args):  # TODO
         user = User(args[0])
@@ -1420,6 +1472,7 @@ class Room(WSConnection):
     ####################
     @property
     def allshownames(self):
+        """Todos los nombres de usuarios en la sala, incluyendo anons"""
         return [x.showname for x in set(self._userdict.values())]
 
     @property
@@ -1447,6 +1500,7 @@ class Room(WSConnection):
 
     @property
     def botname(self):  # TODO anon o temp !#
+        """Nombre del bot en la sala, TODO esto o currentname"""
         return self.name
 
     @property
@@ -1487,6 +1541,7 @@ class Room(WSConnection):
 
     @property
     def modflags(self):
+        """Flags de los mods en la sala. Se puede saber que permisos tienen"""
         return dict([(user.name, self._mods[user]) for user in self._mods])
 
     @property
@@ -1496,6 +1551,7 @@ class Room(WSConnection):
 
     @property
     def nameColor(self):
+        """Color del nombre que se usa en los mensajes de la sala"""
         return self._nameColor
 
     @property
@@ -1530,6 +1586,7 @@ class Room(WSConnection):
 
     @property
     def userlist(self):
+        """Lista de usuarios en la sala, por defecto muestra todos los usuarios (no anons) sin incluir sesiones extras"""
         return self._getUserlist(1, 1)
 
     @property
@@ -1546,6 +1603,7 @@ class Room(WSConnection):
 
     @property
     def usernames(self):
+        """Nombres de usuarios en la sala. Por defecto usado los valores de userlist"""
         return sorted(list(set([x.name for x in self.userlist])))
 
     @property
@@ -1577,23 +1635,32 @@ class Room(WSConnection):
     ####################
     # Comandos de la sala
     ####################
-    def addMod(self, user, powers = '82368'):  # TODO
+    def addMod(self, user, powers = '82368'):  # TODO los poderes serán recibidos de modflags
+        """
+        Agrega un moderador nuevo a la sala con los poderes básicos
+        @param user: str. Usuario que será mod
+        @param powers: Poderes del usuario mod, un string con números
+        """
         if isinstance(user, _User):
             user = user.name
         self._sendCommand('addmod:{}:{}'.format(user, powers))
 
-    def banMessage(self, msg):
+    def banMessage(self, msg: Message) -> bool:
         if self.getLevel(self.user) > 0:
             name = '' if msg.user.name[0] in '!#' else msg.user.name
             self.rawBan(msg.unid, msg.ip, name)
             return True
         return False
 
-    def banUser(self, user):
+    def banUser(self, user: str) -> bool:
+        """
+        Banear un usuario (si se tiene el privilegio)
+        @param user: El usuario, str o _User
+        @return: Bool indicando si se envió el comando
+        """
         msg = self.getLastMessage(user)
         if msg:
-            self.banMessage(msg)
-            return True
+            return self.banMessage(msg)
         return False
 
     def clearall(self):  # TODO
@@ -1878,7 +1945,7 @@ class Room(WSConnection):
         ip = args[6]  # Ip del usuario
         channel = args[7] or 0  # TODO se puede saber el premium con esto premium=4 bg=(8 y premium)
         unknown2 = args[8]
-        rawmsg = ":".join(args[9:])
+        rawmsg = ':'.join(args[9:])
         badge = 0
         # TODO reemplazar por los flags
         if channel and channel.isdigit():
@@ -2121,11 +2188,11 @@ class Room(WSConnection):
     def _rcmd_miu(self, args):  # TODO documentar
         self._callEvent('onPictureChange', User(args[0]))
 
-    def _rcmd_n(self, args):  # TODO
+    def _rcmd_n(self, args):  # TODO aún hay discrepancias en el contador
         """Cambió la cantidad de usuarios en la sala"""
         if not self.flags.NOCOUNTER:
             self._usercount = int(args[0], 16)
-            # assert not self._userdict or len(self._userdict) == self._userCount, 'Warning count doesnt match'  # TODO
+            # assert not self._userdict or len(self._userdict) == self._usercount, 'Warning count doesnt match'  # TODO
             self._callEvent("onUserCountChange")
 
     def _rcmd_ok(self, args):  # TODO
@@ -2285,6 +2352,7 @@ class Gestor:
         self._colasalas = queue.Queue()
         if accounts is None:
             self._accounts = [(name, password)]
+        self._jt = None  # Join Thread
         self._name = self._accounts[0][0]
         self._password = self._accounts[0][1]
         self._rooms = dict()
@@ -2442,9 +2510,9 @@ class Gestor:
         """
         self.onInit()
         self._running = True
-        self._t = threading.Thread(target = self._joinThread, name = "Join rooms")
-        self._t.daemon = True
-        self._t.start()
+        self._jt = threading.Thread(target = self._joinThread, name = "Join rooms")
+        self._jt.daemon = True
+        self._jt.start()
         while self._running:
             # try:
             if self._running:
@@ -2478,19 +2546,22 @@ class Gestor:
                                 con.reconnect()
                             # TODO ConnectionRefusedError
                     except ConnectionResetError:
+                        # TODO esto no funciona si hay muchas salas
                         print('Conexión perdida, reintentando en 10 segundos...')
                         counter = con.attempts or 1
                         while counter:
                             try:
-                                time.sleep(10)
+
                                 con.reconnect()
                                 counter = 0
+
                             except socket.gaierror:  # En caso de que no haya internet
                                 print(
                                         '[{}][{:^5}] Aún no hay internet...'.format(time.strftime('%I:%M:%S %p'),
                                                                                     counter),
                                         file = sys.stderr)
                                 counter += 1
+                                time.sleep(10)
             self._tick()
         # Finish
         for conn in self.getConnections():
@@ -2851,6 +2922,9 @@ class Gestor:
         Al reconectarse a una sala
         @param room: Sala en la que se ha reconectado
         """
+        pass
+
+    def onUnban(self, room, user, target):  # TODO comentar
         pass
 
     def onUpdateInfo(self, room):
