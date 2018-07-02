@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.9.0
+Version: M1.9.1
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -39,6 +39,12 @@ import base64
 from collections import namedtuple, deque
 import hashlib
 import html as html2
+import sys
+
+if sys.version_info[1] < 5:
+    from html.parser import HTMLParser
+
+    html2.unescape = HTMLParser().unescape
 import mimetypes
 import os
 import queue
@@ -46,7 +52,6 @@ import random
 import re
 import select
 import socket
-import sys
 import time
 import threading
 import urllib.parse as urlparse
@@ -56,6 +61,8 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
+version = 'M1.9.1'
+version_info = version.split('.')
 debug = True
 ################################################################
 # Cosas del servidor, las cuentas y el manejo de mods
@@ -109,6 +116,9 @@ ModFlags = {
 
 AdminFlags = ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] | ModFlags["EDIT_GROUP"] | ModFlags["EDIT_GP_ANNC"]
 
+Fonts = {'arial':      0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4, 'palatino': 5, 'papirus': 6,
+         'times':      7, 'typewriter': 8
+}
 
 def _genUid() -> str:
     """Generar una uid ALeatoria de 16 dígitos. Se usa en el login por seguridad"""
@@ -445,7 +455,7 @@ class WS:
         if isinstance(headers, (bytes, bytearray)):
             if b"\r\n\r\n" in headers:
                 headers, _ = headers.split(b"\r\n\r\n", 1)
-            headers = headers.decode()
+            headers = headers.decode(errors = 'ignore')
         if isinstance(headers, str):
             headers = headers.splitlines()
         if isinstance(headers, list):  # Convertirlo en diccionario e ignorar los valores incorrectos
@@ -512,6 +522,7 @@ class WS:
         try:
             resp = urlreq.urlopen(pet)
             headers = resp.headers
+            lectura = resp.read()  # TODO variable de depuración, eliminar
         except HTTPError as e:
             if debug:
                 print('Error code: ', e.code)
@@ -806,7 +817,11 @@ class Message:
     @property
     def time(self):
         """Hora de envío del mensaje"""
-        return time.gmtime(float(self._time))
+        return self._time
+
+    @property
+    def localtime(self):
+        return time.localtime(self._time)
 
     ####
     # Attach/detach
@@ -913,9 +928,13 @@ class WSConnection:
         return self._sock
 
     @property
-    def time(self):
+    def localtimetime(self):
         """Tiempo del servidor"""
-        return time.gmtime(time.time() + self._correctiontime)
+        return time.localtime(time.time() + self._correctiontime)
+
+    @property
+    def time(self):
+        return time.time() + self._correctiontime
 
     @property
     def user(self) -> _User:
@@ -1755,8 +1774,8 @@ class Room(WSConnection):
         """logout of user in a room"""
         self._sendCommand("blogout")
 
-    def message(self, msg, html: bool = False, canal = None):
-        """
+    def message(self, msg, html: bool = False, canal = None, badge = None):
+        """TODO channel 5 para la combinacion esa y un badge
         TODO cola de mensajes
         Envía un mensaje
         @param html: si se habilitarán los carácteres html, en caso contrario se reemplazarán los carácteres especiales
@@ -1773,8 +1792,10 @@ class Room(WSConnection):
         if msg is None:
             return
         msg = self._messageFormat(msg, html)
+        if not badge:
+            badge = self.badge
         for x in msg:
-            self.rawMessage('%s:%s' % (canal + self.badge * 64, x))
+            self.rawMessage('%s:%s' % (canal + badge * 64, x))
 
     def rawMessage(self, msg):
         """
@@ -1936,7 +1957,7 @@ class Room(WSConnection):
 
     def _rcmd_b(self, args):  # TODO reducir proceso
         # TODO el reconocimiento de otros bots en anon está incompleto
-        mtime = float(args[0])  # Hora de envío del mensaje
+        mtime = float(args[0]) - self._timecorrection  # Hora de envío del mensaje
         name = args[1]  # Nombre de usuario si lo hay
         tempname = args[2]  # Nombre del anon si no se ha logeado
         puid = args[3]  # Id del usuario Si no está no se debe procesar
@@ -2105,7 +2126,7 @@ class Room(WSConnection):
         self._callEvent('onFlagsUpdate')
 
     def _rcmd_i(self, args):  # TODO
-        mtime = float(args[0])
+        mtime = float(args[0]) - self._correctiontime
         name = args[1]
         tname = args[2]
         puid = args[3]
@@ -2202,7 +2223,7 @@ class Room(WSConnection):
         self._authtype = args[2]  # M=Ok, N= ? TODO tipo C
         self._currentname = args[3]
         self._connectiontime = args[4]
-        self._correctiontime = float(self._connectiontime) - time.time()
+        self._correctiontime = int(float(self._connectiontime) - time.time())
         self._currentIP = args[5]
         mods = args[6]
         flags = args[7]
@@ -2409,16 +2430,20 @@ class Gestor:
         @param pm: Si se usará el PM o no
         @param accounts: Una lista/tupla de cuentas ((clave,usuario),(clave,usuario))
         """
-        # if not rooms:
-        #    rooms = str(input('Nombres de salas separados por coma: ')).split(';')
-        # if '' in rooms:
-        #    rooms = []
-        # if name is None: name = str(input("Usuario: "))
-        # if not name:
-        #    name = ''
-        # if password is None: password = str(input("User password: "))
-        # if not password:
-        #    password = ''
+        if not rooms:
+            rooms = str(input('Nombres de salas separados por coma: ')).split(',')
+        if '' in rooms:
+            rooms = []
+        if name is None and not accounts:
+            name = str(input("Usuario: "))
+        if not name:
+            name = ''
+        if password is None and not accounts:
+            password = str(input("Contraseña: "))
+        if not password:
+            password = ''
+        if accounts is None:
+            accounts = [(name, password)]
         self = cls(name, password, pm, accounts)
         for room in rooms:
 
@@ -2599,7 +2624,7 @@ class Gestor:
         @param facenum: El número de la fuente en un string
         """
 
-        self.user._fontFace = str(facenum)
+        self.user._fontFace = str(Fonts.get(str(facenum).lower(), facenum))
 
     def setFontSize(self, sizenum):
         """Cambiar el tamaño de la fuente
