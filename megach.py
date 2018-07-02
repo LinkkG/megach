@@ -255,7 +255,7 @@ def _clean_message(msg: str, pm: bool = False) -> [str, str, str]:
         f = f.group(1)
     msg = re.sub("<n.*?/>", "", msg)
     msg = _strip_html(msg)
-    msg = _unescape_html(msg)
+    msg = html2.unescape(msg).replace('\r', '\n')
     return msg, n or '', f or ''
 
 
@@ -300,20 +300,7 @@ def _parseFont(f: str, pm = False) -> [str, str, str]:
 def _parseNameColor(n: str) -> str:
     """Return the name color from message"""
     # probably is already the name
-    return _strip_html(n)[1]
-
-
-def _unescape_html(args: str) -> str:
-    args = args.replace("&lt;", "<")
-    args = args.replace("&gt;", ">")
-    args = args.replace('&#39;', "'")
-    args = args.replace('&quot;', '"')
-    args = args.replace('&nbsp;', ' ')
-    args = args.replace("&amp;", "&")  # Esto debe ir al final
-    args = args.replace('\r', '\n')
-    return args
-    # o.o &amp; &#39; &quot; &amp;amp; &amp;#39; &amp;quot;
-
+    return _clean_message(n)[1]
 
 ################################################################
 # Inicio del bot
@@ -579,7 +566,7 @@ class _User:
         self._fontFace = '0'
         self._fontSize = 12
         self._ip = ''
-        self._isanon = name[0] in '!#'
+        self._isanon = not len(name) or name[0] in '!#'
         self._mbg = False
         self._msgs = list()  # TODO Mantener historial reciente de un usuario
         self._mrec = False
@@ -2434,15 +2421,15 @@ class Gestor:
             rooms = str(input('Nombres de salas separados por coma: ')).split(',')
         if '' in rooms:
             rooms = []
-        if name is None and not accounts:
+        if not name and not accounts:
             name = str(input("Usuario: "))
         if not name:
             name = ''
-        if password is None and not accounts:
+        if not password and not accounts:
             password = str(input("Contraseña: "))
         if not password:
             password = ''
-        if accounts is None:
+        if not accounts:
             accounts = [(name, password)]
         self = cls(name, password, pm, accounts)
         for room in rooms:
@@ -2570,16 +2557,15 @@ class Gestor:
                                 print("{}: Fallo de recv, reconectando...".format(con.name))  # con.reconnect()  #
                                 con.reconnect()
                             # TODO ConnectionRefusedError
-                    except ConnectionResetError:
+                    except socket.error as cre:  # socket.error - ConnectionResetError
                         # TODO esto no funciona si hay muchas salas
+                        self.test = cre  # variable de depuración para android
                         print('Conexión perdida, reintentando en 10 segundos...')
                         counter = con.attempts or 1
                         while counter:
                             try:
-
                                 con.reconnect()
                                 counter = 0
-
                             except socket.gaierror:  # En caso de que no haya internet
                                 print(
                                         '[{}][{:^5}] Aún no hay internet...'.format(time.strftime('%I:%M:%S %p'),
