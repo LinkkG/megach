@@ -116,9 +116,11 @@ ModFlags = {
 
 AdminFlags = ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] | ModFlags["EDIT_GROUP"] | ModFlags["EDIT_GP_ANNC"]
 
-Fonts = {'arial':      0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4, 'palatino': 5, 'papirus': 6,
-         'times':      7, 'typewriter': 8
-}
+Fonts = {
+    'arial': 0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4, 'palatino': 5, 'papirus': 6,
+    'times': 7, 'typewriter': 8
+    }
+
 
 def _genUid() -> str:
     """Generar una uid ALeatoria de 16 dígitos. Se usa en el login por seguridad"""
@@ -301,6 +303,7 @@ def _parseNameColor(n: str) -> str:
     """Return the name color from message"""
     # probably is already the name
     return _clean_message(n)[1]
+
 
 ################################################################
 # Inicio del bot
@@ -1532,7 +1535,6 @@ class Room(WSConnection):
 
     @flags.setter  # TODO ajustarlo para cambiar la sala
     def flags(self, value):
-        print("HOLA")
         self._flags = value
 
     @property
@@ -1592,7 +1594,8 @@ class Room(WSConnection):
 
     @property
     def userlist(self):
-        """Lista de usuarios en la sala, por defecto muestra todos los usuarios (no anons) sin incluir sesiones extras"""
+        """Lista de usuarios en la sala, por defecto muestra todos los usuarios (no anons) sin incluir sesiones
+        extras"""
         return self._getUserlist(1, 1)
 
     @property
@@ -1794,8 +1797,8 @@ class Room(WSConnection):
             # TODO meme se debe enviar un string aleatorio en base 36
             self._sendCommand("bm", "meme", msg)
 
-    def removeMod(self, user, powers):  # TODO parametro no utilizado
-        if isinstance(user, _User):  # TODO externalizar
+    def removeMod(self, user):
+        if isinstance(user, _User):
             user = user.name
         self._sendCommand('removemod:{}', user)
 
@@ -1838,10 +1841,26 @@ class Room(WSConnection):
             return True
         return False
 
-    def updateMod(self, user, powers = '82368'):  # TODO
-        if isinstance(user, _User):
+    def updateMod(self, user: str, powers: str = '82368'):  # TODO
+        """
+        Actualiza los poderes de un moderador
+        @param user: Moderador al que se le actualizarán los privilegios
+        @param powers: Poderes nuevos del mod. Si no se proporcionan se usarán los básicos
+        @return:
+        """
+        # TODO comprobar si el usuario del bot tiene los privilegios
+        if isinstance(user, _User):  # TODO externalizar
             user = user.name
+        if isinstance(powers, str) and not powers.isdigit():
+            if powers in ModFlags:
+                powers = ModFlags.get(powers, None)
+            else:
+                return False
+        # if powers and self.user in self.modflags and self.modflags.get(self.user.name):
         self._sendCommand('updmod:{}:{}'.format(user, powers))
+        return True
+        # else:
+        #    return False
 
     def updateProfile(self, age = '', gender = '', country = '', about = '', fullpic = None,
                       show = False):  # TODO country is not working
@@ -1942,7 +1961,7 @@ class Room(WSConnection):
         # TODO Cambiar el self.user por el alias usado en login
         pass
 
-    def _rcmd_b(self, args):  # TODO reducir proceso
+    def _rcmd_b(self, args):  # TODO reducir  y unificar con rcmd_i
         # TODO el reconocimiento de otros bots en anon está incompleto
         mtime = float(args[0]) - self._timecorrection  # Hora de envío del mensaje
         name = args[1]  # Nombre de usuario si lo hay
@@ -1978,9 +1997,11 @@ class Room(WSConnection):
             nameColor = None
             name = "#" + tempname
             if name == "#":
-                # TODO problemas acá, se debe encontrar el tiempo de conexión con esa puid
                 # name=[u.name for u in self.userlist if u.sessionids==p]
-                name = "!" + getanonname(puid, n)
+                if n.isdigit():  # Hay anons con bots que envian malos mensajes y pueden producir fallos
+                    name = "!" + getanonname(puid, n)
+                else:
+                    return  # TODO En esos casos el mensaje no se muestra ni en el chat
         else:
             if n:
                 nameColor = n
@@ -2011,6 +2032,18 @@ class Room(WSConnection):
                       user = user
                       )
         self._mqueue[msgnum] = msg
+
+    def _rcmd_badalias(self, args):
+        """TODO mal inicio de sesión sin clave"""
+        # 4 ya hay un usuario con ese nombre en la sala
+        # 2 ya tienes ese alias
+        # 1 La palabra está baneada en el grupo
+        pass
+
+    def _rcmd_badlogin(self, args):
+        """TODO inicio de sesión malo"""
+        # 2 significa mal clave
+        pass
 
     def _rcmd_blocked(self, args):  # TODO Que era todo esto?
         user = None
@@ -2126,7 +2159,11 @@ class Room(WSConnection):
             nameColor = None
             name = "#" + tname
             if name == "#":
-                name = "!" + getanonname(puid, n)
+                # name=[u.name for u in self.userlist if u.sessionids==p]
+                if n.isdigit():  # Hay anons con bots que envian malos mensajes y pueden producir fallos
+                    name = "!" + getanonname(puid, n)
+                else:
+                    return  # TODO En esos casos el mensaje no se muestra ni en el chat
         else:
             if n:
                 nameColor = _parseNameColor(n)
@@ -2170,6 +2207,9 @@ class Room(WSConnection):
             # TODO
         if args and debug:
             print('New Unhandled arg on inited ', file = sys.stderr)
+
+    def _rmd_logoutfirst(self, args):  # TODO al intentar iniciar sesión sin haber cerrado otra
+        pass
 
     def _rcmd_logoutok(self, args):
         """Me he desconectado, ahora usaré mi nombre de anon"""
@@ -2278,6 +2318,11 @@ class Room(WSConnection):
                     self._callEvent('onUserLogout', user, puid)
             user.addPersonalUserId(self, puid)
             self._userdict[ssid] = user
+
+    def _rcmd_pwdok(self, args):
+        """Login correcto"""
+        # TODO hacer algo al respecto ?)
+        pass
 
     def _rcmd_show_fw(self, args):  # TODO
         self._callEvent('onFloodWarning')
@@ -2447,15 +2492,15 @@ class Gestor:
             return '<%s Task: "%s" [%s]>' % (
                 'Interval' if self.isInterval else 'Timeout', self.func.__name__, self.timeout)
 
-        def __init__(self, mgr, func = None, timeout = None):
+        def __init__(self, mgr, func = None, timeout: float = None, interval: bool = False):
             """
             Inicia una tarea nueva
             @param mgr: El dueño de esta tarea y el que la mantiene con vida
             """
             self.func = func
-            self.isInterval = False
-            self.mgr = mgr
             self.timeout = timeout
+            self.isInterval = interval
+            self.mgr = mgr
 
         def cancel(self):
             """Sugar for removeTask."""
@@ -2518,7 +2563,6 @@ class Gestor:
     def main(self):
         """
         Poner en marcha al bot
-        # TODO
         """
         self.onInit()
         self._running = True
@@ -2547,14 +2591,13 @@ class Gestor:
                     con = [x for x in conns if x.sock == sock][0]
                     try:
                         chunk = sock.recv(1024)
-                        if chunk:  # TODO
+                        if chunk:
                             con.onData(chunk)
                         else:
                             # Conexión perdida
                             if not con._connected:  # Nunca se recibió comandos de la conexión
                                 con.disconnect()
                             else:
-                                print("{}: Fallo de recv, reconectando...".format(con.name))  # con.reconnect()  #
                                 con.reconnect()
                             # TODO ConnectionRefusedError
                     except socket.error as cre:  # socket.error - ConnectionResetError
@@ -2606,7 +2649,6 @@ class Gestor:
 
     def setFontFace(self, facenum):
         """
-        # TODO usar el nombre
         @param facenum: El número de la fuente en un string
         """
 
@@ -2618,19 +2660,15 @@ class Gestor:
         """
         self.user._fontSize = sizenum
 
-    def setInterval(self, intervalo, funcion, *args, **kwargs):
+    def setInterval(self, tiempo, funcion, *args, **kwargs):
         """
         Llama a una función cada intervalo con los argumentos indicados
         @param funcion: La función que será invocada
-        @type intervalo int
-        @param intervalo:intervalo
-        TODO
+        @type tiempo int
+        @param tiempo:intervalo
         """
-        task = self._Task(self)
-        task.target = time.time() + intervalo
-        task.timeout = intervalo
-        task.func = funcion
-        task.isInterval = True
+        task = self._Task(self, funcion, tiempo, True)
+        task.target = time.time() + tiempo
         task.args = args
         task.kw = kwargs
         self._tasks.add(task)
@@ -2654,8 +2692,6 @@ class Gestor:
 
     def setNameColor(self, hexcolor):
         self.user._nameColor = hexcolor
-        # for x in self._rooms: TODO
-        #    x.user.setnameColor(hexcolor)
 
     def _tick(self):
         now = time.time()
