@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.9.1
+Version: M1.9.2
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -61,7 +61,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.9.1'
+version = 'M1.9.2'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -918,7 +918,7 @@ class WSConnection:
         return self._sock
 
     @property
-    def localtimetime(self):
+    def localtime(self):
         """Tiempo del servidor"""
         return time.localtime(time.time() + self._correctiontime)
 
@@ -1236,7 +1236,7 @@ class PM(WSConnection):
             return False
         self._sendCommand(*__reg2)
 
-    def addContact(self, user):  # TODO
+    def addContact(self, user: str):  # TODO
         """add contact"""
         if isinstance(user, str):  # TODO externalizar
             user = User(user)
@@ -1390,7 +1390,9 @@ class PM(WSConnection):
             self._callEvent("onPMUnblock", user)
 
     def _rcmd_wl(self, args):
-        """Lista de contactos recibida"""  # TODO
+        """Lista de contactos recibida al conectarse"""
+        # TODO Revisar esta sección
+        # [11:28:36 PM][_____PM______]:wlapp:megamaster12:1530768515.41
         self._contacts = set()
         for i in range(len(args) // 4):
             name, last_on, is_on, idle = args[i * 4: i * 4 + 4]
@@ -1405,6 +1407,13 @@ class PM(WSConnection):
                 self._status[user] = [int(last_on), True, time.time() - int(idle) * 60]
             self._contacts.add(user)
         self._callEvent("onPMContactlistReceive")
+
+    def _rcmd_wlapp(self, args):
+        """Alguien ha iniciado sesión en la app"""
+        user = User(args[0])
+        ctime = float(args[1])
+
+        # TODO revisar esta sección
 
     def _rcmd_wloffline(self, args):  # TODO
         user = User(args[0])
@@ -2440,6 +2449,7 @@ class Gestor:
     def __init__(self, name: str = None, password: str = None, pm: bool = None, accounts = None):
         self._accounts = accounts
         self._colasalas = queue.Queue()
+        self.connlock = threading.Lock()
         if accounts is None:
             self._accounts = [(name, password)]
         self._jt = None  # Join Thread
@@ -2615,7 +2625,8 @@ class Gestor:
                 if not conns and not socks and not wsocks:
                     rd, wr, sp = [], [], []
                 else:
-                    rd, wr, sp = select.select(socks, wsocks, socks, self._TimerResolution)
+                    with self.connlock:
+                        rd, wr, sp = select.select(socks, wsocks, socks, self._TimerResolution)
                 for sock in wr:  # Enviar
                     try:
                         con = [x for x in conns if x.sock == sock][0]
