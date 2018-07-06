@@ -44,7 +44,7 @@ import sys
 if sys.version_info[1] < 5:
     from html.parser import HTMLParser
 
-    html2.unescape = HTMLParser().unescape
+    html2.unescape = HTMLParser().unescape  # TODO revisar si hace falta instanciar la clase
 import mimetypes
 import os
 import queue
@@ -1435,13 +1435,16 @@ class Room(WSConnection):
         # TODO , server = None, port = None, uid = None):
         # TODO not account start anon
         super().__init__(name = account[0], password = account[1])
+        # Configuraciones
         self._badge = 0
-        self._banlist = dict()
         self._channel = 0
         self._currentaccount = account
         self._currentname = account[0]
+        self._maxHistoryLength = Gestor.maxHistoryLength  # Por que no guardar una configuración de esto por sala
+        # Datos del chat
+        self._banlist = dict()  # Lista de usuarios baneados
         self._flags = None
-        # self._history = list() cambiado de tipo
+        self._history = deque(maxlen = self._maxHistoryLength)
         self._mqueue = dict()
         self._mods = dict()
         self._msgs = dict()
@@ -1472,8 +1475,7 @@ class Room(WSConnection):
         if self.mgr:
             self._bgmode = int(self.mgr.bgmode)
             super().connect()
-        self._maxHistoryLength = Gestor.maxHistoryLength  # Por que no guardar un número por sala ?)
-        self._history = deque(maxlen = self._maxHistoryLength)
+
         # TODO
 
     ####################
@@ -1802,6 +1804,14 @@ class Room(WSConnection):
             user = user.name
         self._sendCommand('removemod:{}', user)
 
+    def setBannedWords(self, part = '', whole = ''):  # TODO documentar
+        """
+        Actualiza las palabras baneadas para que coincidan con las recibidas
+        @param part: Las partes de palabras que serán baneadas (separadas por coma, 4 carácteres o más)
+        @param whole: Las palabras completas que serán baneadas, (separadas por coma, cualquier tamaño)
+        """
+        self._sendCommand('setbannedwords', urlreq.quote(part), urlreq.quote(whole))
+
     def setRecordingMode(self, modo):
         self._recording = int(modo)
         if self.connected:
@@ -1817,6 +1827,16 @@ class Room(WSConnection):
             return True
         else:
             return False
+
+    def updateBannedWords(self, part = '', whole = ''):
+        """
+        Actualiza las palabras baneadas agregando las indicadas, ambos parámetros son opcionales
+        @param part: Las partes de palabras que serán agregadas (separadas por coma,4 carácteres o más)
+        @param whole: Las palabras completas que serán agregadas, (separadas por coma, cualquier tamaño)
+        @return: bool TODO, comprobar si se dispone el nivel para el cambio
+        """
+        self._bwqueue = '%s:%s' % (part, whole)
+        self._sendCommand('getbannedwords')
 
     def updateFlags(self, flag = None, enabled = True):
         if flag:
@@ -2078,6 +2098,19 @@ class Room(WSConnection):
                 "src":    User(params[4])
                 }
         self._callEvent("onBanlistUpdate")
+
+    def _rcmd_bw(self, args):  # Palabras baneadas en el chat
+        # TODO, actualizar el registro del chat
+        parts, whole = '', ''
+        if args:
+            part = urlreq.unquote(args[0])
+        if len(args) > 1:
+            whole = urlreq.unquote(args[1])
+        if hasattr(self, '_bwqueue'):
+            self._bwqueue = [self._bwqueue.split(':', 1)[0] + ',' + args[0],
+                             self._bwqueue.split(':', 1)[1] + ',' + args[1]]
+            self.setBannedWords(*self._bwqueue)
+        # TODO agregar un callEvent
 
     def _rcmd_clearall(self, args):  # TODO comentar
         self._callEvent("onClearall", args[0])
@@ -2349,6 +2382,10 @@ class Room(WSConnection):
                                                         ModFlags)  # TODO lo añade con el poder más básico y el badge
                 self._mods[msg.user].isadmin = int('82368') & AdminFlags != 0
             self._callEvent("onMessage", msg.user, msg)
+
+    def _rcmd_ubw(self, args):  # TODO palabas desbaneadas ?)
+        ubw = args
+        pass
 
     def _rcmd_unblocked(self, args):  # TODO
         args = ":".join(args).split(";")[-1].split(":")  # TODO checar
