@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.9.2
+Version: M1.9.2.1
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -61,7 +61,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.9.2'
+version = 'M1.9.2.1'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -950,13 +950,14 @@ class WSConnection:
     def _disconnect(self):
         """Privado: Solo usar para reconneción
         Cierra la conexión y detiene los pings, pero el objeto sigue existiendo dentro de su mgr"""
-        self._connected = False
-        if self._sock is not None:
-            self._sock.close()
-        # TODO do i need to clear session ids?
-        self._sock = None
-        self._serverheaders = b''
-        self._pingTask.cancel()
+        with self.mgr.connlock:
+            self._connected = False
+            if self._sock is not None:
+                self._sock.close()
+            # TODO do i need to clear session ids?
+            self._sock = None
+            self._serverheaders = b''
+            self._pingTask.cancel()
 
     def disconnect(self):
         """Público, desconección completa"""
@@ -2619,29 +2620,35 @@ class Gestor:
         while self._running:
             # try:
             if self._running:
-                conns = self.getConnections()
-                socks = [x.sock for x in conns]
-                wsocks = [x.sock for x in conns if x.wbuf]
-                if not conns and not socks and not wsocks:
-                    rd, wr, sp = [], [], []
-                else:
-                    with self.connlock:
+                with self.connlock:
+                    conns = self.getConnections()
+                    socks = [x.sock for x in conns]
+                    wsocks = [x.sock for x in conns if x.wbuf]
+                    if not conns and not socks and not wsocks:
+                        rd, wr, sp = [], [], []
+                    else:
                         rd, wr, sp = select.select(socks, wsocks, socks, self._TimerResolution)
                 for sock in wr:  # Enviar
                     try:
                         con = [x for x in conns if x.sock == sock][0]
-                        size = sock.send(con.wbuf)
-                        con._wbuf = con.wbuf[size:]
+                        with self.connlock:
+                            if con.sock:
+                                size = sock.send(con.wbuf)
+                                con._wbuf = con.wbuf[size:]
                     except Exception as e:
                         if debug:
                             print("Error sock.send " + str(e), sys.stderr)
+
                 for sock in rd:  # Recibir
                     con = [x for x in conns if x.sock == sock][0]
                     try:
-                        chunk = sock.recv(1024)
+                        chunk = None
+                        with self.connlock:
+                            if con.sock:
+                                chunk = sock.recv(1024)
                         if chunk:
                             con.onData(chunk)
-                        else:
+                        elif chunk is not None:
                             # Conexión perdida
                             if not con._connected:  # Nunca se recibió comandos de la conexión
                                 con.disconnect()
@@ -3019,7 +3026,13 @@ class Gestor:
         """
         pass
 
-    def onUnban(self, room, user, target):  # TODO comentar
+    def onUnban(self, room, user, target):
+        """
+        Al ser desbaneado un usuario
+        @param room: Sala en la que ocurre el evento
+        @param user: Usuario que quita el ban
+        @param target: Usuaro que ha sido desbaneado
+        """
         pass
 
     def onUpdateInfo(self, room):
