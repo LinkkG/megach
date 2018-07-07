@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.9.2.1
+Version: M1.9.3
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -61,7 +61,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.9.2.1'
+version = 'M1.9.3'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1050,7 +1050,7 @@ class WSConnection:
         nc = self.user.nameColor
         if not html:
             msg = html2.escape(msg, quote = False)
-        msg = msg.replace('~', '&#126;')
+        msg = msg.replace('\n', '\r').replace('~', '&#126;')
         for x in 'b i u'.split():
             msg = msg.replace('<%s>' % x, '<%s>' % x.upper()).replace('</%s>' % x, '</%s>' % x.upper())
         # TODO comprobar  velocidad comparado con el otro
