@@ -163,7 +163,7 @@ def convertPM(msg: str):  # TODO Medir velocidad y acelerar
         left, found, right = right.partition(fuentes[0])
         s, c, f = _parseFont(found)
         s = s or '11'
-        c = c or '00F'
+        c = c.lower() or '00f'
         f = f or '1'
         c = c[::2] if len(c) == 6 else c[:3]
         msg += left + '</g>'
@@ -846,9 +846,14 @@ class WSConnection:
     No Instanciar directamente
     """
     BIGMESSAGECUT = False  # Si es True se manda solo un pedazo de los mensajes, false y se mandan todos
-    MAXLEN = 2800  # 2900 ON PM IS > 12000
+    MAXLEN = 2700  # 2900 ON PM IS > 12000
     PINGINTERVAL = 90  # Intervalo para enviar pings, Si llega a 300 se desconecta
 
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return "<%s: %s>" % (self.__class__.__name__, self.name)
     def __init__(self, mgr: object = None, name: str = '', password: str = '', server: str = '',
                  port: str = None, origin: str = '') -> None:
         """
@@ -1034,12 +1039,18 @@ class WSConnection:
 
     def _messageFormat(self, msg: str, html: bool):
         formt = ''
-        msg = msg.strip().replace('\n', '\r')
-        # Reemplazar varios espacios para que sean visibles sin alterar el tageo
+        if len(msg) > self.MAXLEN:
+            extra = ''
+            tmp = []
+            if self.BIGMESSAGECUT:
+                extra = msg[:self.MAXLEN]
+            else:
+                return self._messageFormat(msg[:self.MAXLEN], html) + self._messageFormat(msg[self.MAXLEN:], html)
         fc = self.user.fontColor.lower()
         nc = self.user.nameColor
         if not html:
-            msg = html2.escape(msg, quote = False).replace('~', '&#126;')
+            msg = html2.escape(msg, quote = False)
+        msg = msg.replace('~', '&#126;')
         for x in 'b i u'.split():
             msg = msg.replace('<%s>' % x, '<%s>' % x.upper()).replace('</%s>' % x, '</%s>' % x.upper())
         # TODO comprobar  velocidad comparado con el otro
@@ -1056,15 +1067,7 @@ class WSConnection:
             if self.user.isanon:  # El color del nombre es el tiempo de conexión y no hay fuente
                 nc = str(self._connectiontime).split('.')[0][-4:]
                 formt = '<n{0}/>{4}'
-        if len(msg) > self.MAXLEN:  # TODO el tamaño puede ser afectado por multifuentes
-            if self.BIGMESSAGECUT:
-                msg = msg[:self.MAXLEN]
-            else:
-                tmp = msg
-                msg = list()
-                while len(tmp) > self.MAXLEN:
-                    msg.append(tmp[:self.MAXLEN])
-                    tmp = tmp[self.MAXLEN:]
+
         if type(msg) != list:
             msg = [msg]
         return [formt.format(nc, str(self.user.fontSize), fc, self.user.fontFace, unimsg) for unimsg in msg]
@@ -1435,12 +1438,6 @@ class Room(WSConnection):
     sus propiedades
     """
 
-    def __str__(self):
-        return self.name
-
-    def __repr__(self):
-        return "<%s: %s>" % (self.__class__.__name__, self.name)
-
     def __init__(self, name: str, mgr: object = None, account: tuple = None):
         # TODO , server = None, port = None, uid = None):
         # TODO not account start anon
@@ -1716,6 +1713,8 @@ class Room(WSConnection):
 
     def findUser(self, name):
         # TODO, capacidad para recibir un User
+        if isinstance(name, _User):
+            name = name.name
         if name.lower() in self.allusernames:
             return User(name)
         return None
@@ -1770,6 +1769,7 @@ class Room(WSConnection):
             cuenta[0] = account  # Poner el nombre tal cual
             account = cuenta
             self._currentaccount = [account[0], account[1]]
+        self._currentname = account[0]
         self._sendCommand('blogin', account[0], account[1])
 
     def logout(self):  # TODO ordenar
@@ -1892,17 +1892,44 @@ class Room(WSConnection):
         # else:
         #    return False
 
+    def updateBG(self, bgc = '', ialp = '100', useimg = '0', bgalp = '100', align = 'tl', isvid = '0', tile = '0'):
+        """
+        TODO ADVERTENCIA, está en fase de pruebas y sigue sujeto a cambios. usar bajo su propio riesgo
+        @param bgc: Color del bg Hexadecimal
+        @param ialp: Opacidad de la imagen
+        @param useimg: Usar imagen (0/1)
+        @param bgalp: Opacidad del color de bg
+        @param align: Alineacion de la imagen (tr,tl,br,bl)
+        @param isvid: Si el bg contiene video (0/1) # TODO probar con gifs
+        @param tile: Si la imagen se repite para cubrir el area de texto(0/1)
+        @return: bool indicando exito o fracaso
+        """
+        data = {
+            "lo":     self._currentaccount[0],
+            "p":      self._currentaccount[1],
+            "bgc":    bgc,
+            "ialp":   ialp,
+            "useimg": useimg,
+            "bgalp":  bgalp,
+            "align":  align,
+            "isvid":  isvid,
+            "tile":   tile,
+            'hasrec': '0'
+            }
+        if WS.RPOST("http://chatango.com/updatemsgbg", data, headers = None):
+            self._sendCommand("miu")
+            return True
+        else:
+            return False
+
     def updateProfile(self, age = '', gender = '', country = '', about = '', fullpic = None,
                       show = False):  # TODO country is not working
         # WARNING, fullpic is not working do not use"
         data = {
-
-            "origin": "st.chatango.com",
             "u":      self._currentaccount[0],
             "p":      self._currentaccount[1],
             "auth":   "pwd", "arch": "h5", "src": "group", "action": "update",
             "age":    age, "gender": gender, "location": country, "line": about,
-
             }
         headers = None
         if fullpic:
@@ -2256,8 +2283,7 @@ class Room(WSConnection):
 
     def _rcmd_logoutok(self, args):
         """Me he desconectado, ahora usaré mi nombre de anon"""
-        # TODO revisar este comando
-        self._currentname = '!' + getanonname(self._puid, str(self._connectiontime))  # TODO de donde era user_id?
+        self._currentname = '!' + getanonname(self._puid, str(self._connectiontime))
         self._user = User(self._currentname, nameColor = str(self._connectiontime).split('.')[0][-4:])
 
     def _rcmd_mods(self, args):  # TODO
@@ -2364,10 +2390,10 @@ class Room(WSConnection):
 
     def _rcmd_pwdok(self, args):
         """Login correcto"""
-        # TODO hacer algo al respecto ?)
-        pass
+        self._user = User(self._currentname)
 
-    def _rcmd_show_fw(self, args):  # TODO
+    def _rcmd_show_fw(self, args):
+        """Comando sin argumentos que manda una advertencia de flood en una sala"""
         self._callEvent('onFloodWarning')
 
     def _rcmd_show_tb(self, args):  # TODO documentar
@@ -2536,6 +2562,10 @@ class Gestor:
         pass
 
     class _Task:
+        def __repr__(self):
+            return '<%s Task: "%s" [%s]>' % (
+                'Interval' if self.isInterval else 'Timeout', self.func.__name__, self.timeout)
+
         def __str__(self):
             return '<%s Task: "%s" [%s]>' % (
                 'Interval' if self.isInterval else 'Timeout', self.func.__name__, self.timeout)
@@ -2555,6 +2585,8 @@ class Gestor:
             self.mgr.removeTask(self)
 
     def findUser(self, name):
+        if isinstance(name, _User):  # TODO externalizar
+            name = name.name
         return [x.name for x in self._rooms.values() if x.findUser(name)]
 
     def getConnections(self):
