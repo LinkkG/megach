@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.9.4
+Version: M1.9.4.1
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -61,7 +61,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.9.4'
+version = 'M1.9.4.1'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -969,6 +969,8 @@ class WSConnection:
         """Público, desconección completa"""
         self._disconnect()
         if not isinstance(self, PM):
+            if self.name in self.mgr.roomnames:
+                self.mgr.leaveRoom(self)
             self._callEvent('onDisconnect')
         else:
             self._callEvent('onPMDisconnect')
@@ -2649,8 +2651,8 @@ class Gestor:
         if isinstance(room, Room):
             room = room.name
         if room.lower() in self._rooms:
-            self._rooms[room].disconnect()
-            self._rooms.pop(room)
+            tmp = self._rooms.pop(room)
+            tmp.disconnect()
 
     def main(self):
         """
