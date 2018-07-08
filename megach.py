@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.9.4.1
+Version: M1.9.4.2
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -61,7 +61,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.9.4.1'
+version = 'M1.9.4.2'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1505,16 +1505,16 @@ class Room(WSConnection):
     @property
     def allshownames(self):
         """Todos los nombres de usuarios en la sala, incluyendo anons"""
-        return [x.showname for x in set(self._userdict.values())]
+        return [x[1].showname for x in set(self._userdict.values())]
 
     @property
     def alluserlist(self):
         """Lista de todos los usuarios en la sala, incluyendo anons"""
-        return list(self._userdict.values())
+        return list(x[1] for x in self._userdict.values())
 
     @property
     def allusernames(self):
-        return sorted([x.name for x in set(self._userdict.values())])
+        return sorted([x[1].name for x in set(self._userdict.values())])
 
     @property
     def badge(self):
@@ -1578,7 +1578,7 @@ class Room(WSConnection):
     @property
     def modnames(self):
         """Nombres de los moderadores en la sala"""
-        return [x.name for x in self.mods]
+        return sorted([x.name for x in self.mods], key = lambda s: s.lower())
 
     @property
     def msgs(self):
@@ -1663,7 +1663,7 @@ class Room(WSConnection):
             ul = map(lambda x: x.user,
                      self._history[-memoria:])  # TODO memoria no debe ser mayor a la cantidad de elementos
         else:
-            ul = list(set([x for x in self._userdict.values() if not x.isanon]))
+            ul = list(set([x[1] for x in self._userdict.values() if not x[1].isanon]))
         if unica:
             return list(set(ul))
         return ul
@@ -1941,7 +1941,9 @@ class Room(WSConnection):
             return False
 
     def updateProfile(self, age = '', gender = '', country = '', about = '', fullpic = None,
-                      show = False):  # TODO country is not working
+                      show = False):
+        """"AGE"""
+        # TODO country is not working
         # WARNING, fullpic is not working do not use"
         data = {
             "u":    self._currentaccount[0],
@@ -2217,7 +2219,7 @@ class Room(WSConnection):
             if user in ({self._owner} | self.mods):
                 user.setName(name)
             user.addSessionId(self, ssid)
-            self._userdict[ssid] = user
+            self._userdict[ssid] = [contime, user]
 
     def _rcmd_gparticipants(self, args):
         """Comando viejo de chatango, ya no se usa, pero aún puede seguirlo enviando"""
@@ -2378,12 +2380,18 @@ class Room(WSConnection):
             user.removeSessionId(self, ssid)  # Quitar la id de sesión activa
             self._callEvent('onLeave', user, puid)
             if ssid in self._userdict:  # Remover el usuario de la sala
-                self._userhistory.append([contime, self._userdict.pop(ssid)])
+                usr = self._userdict.pop(ssid)[1]
+                lista = [x[1] for x in self._userhistory]
+                if usr not in lista:
+                    self._userhistory.append([contime, usr])
+                else:
+                    self._userhistory.remove([x for x in self._userhistory if x[1] == usr][0])
+                    self._userhistory.append([contime, usr])
             if user.isanon:
                 self._callEvent('onAnonLeave', user, puid)
         elif cambio == '1':  # Join
             user.addSessionId(self, ssid)  # Agregar la sesión al usuario
-            self._userdict[ssid] = user  # Agregar la sesión a la sala
+            self._userdict[ssid] = [contime, user]  # Agregar la sesión a la sala
             if not user.isanon and user not in self.userlist:
                 self._callEvent('onJoin', user, puid)
             elif user.isanon:
@@ -2393,7 +2401,7 @@ class Room(WSConnection):
             # TODO conectar cuentas que han cambiado usando este método
             before = None
             if ssid in self._userdict:
-                before = self._userdict[ssid]
+                before = self._userdict[ssid][1]
             if before and before.isanon:  # Login
                 if user.isanon:  # Anon Login
                     self._callEvent('onAnonLogin', user, puid)  # TODO
@@ -2401,10 +2409,17 @@ class Room(WSConnection):
                     self._callEvent('onUserLogin', user, puid)
             elif not before.isanon:  # Logout
                 if before in self.userlist:
-                    self._userhistory.append([contime, before])
+                    # TODO Agregar apropiadamente sin repetirlos
+                    lista = [x[1] for x in self._userhistory]
+
+                    if before not in lista:
+                        self._userhistory.append([contime, before])
+                    else:
+                        self._userhistory.remove([x for x in self._userhistory][0])
+                        self._userhistory.append([contime, before])
                     self._callEvent('onUserLogout', user, puid)
             user.addPersonalUserId(self, puid)
-            self._userdict[ssid] = user
+            self._userdict[ssid] = [contime, user]
 
     def _rcmd_pwdok(self, args):
         """Login correcto"""
@@ -2954,13 +2969,21 @@ class Gestor:
         """
         pass
 
-    def onModAdd(self, room, user):
+    def onModAdd(self, room, user):  # TODO documentar
         pass
 
-    def onModChange(self, room, users):
+    def onModChange(self, room, users):  # TODO documentar
         pass
 
-    def onModRemove(self, room, user):
+    def onModRemove(self, room, user):  # TODO documentar
+        pass
+
+    def onPMContactAdd(self, pm, user):
+        """
+        Al agregarse un contacto para el bot
+        @param pm: El PM
+        @param user: El usuario agregado a los contactos
+        """
         pass
 
     def onPMContactlistReceive(self, pm):
