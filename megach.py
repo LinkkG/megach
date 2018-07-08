@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.9.3
+Version: M1.9.4
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -61,7 +61,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.9.3'
+version = 'M1.9.4'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -827,13 +827,13 @@ class Message:
         if self._msgid is None:
             self._room = room
             self._msgid = msgid
-            self._room.msgs[msgid] = self
+            self._room.msgs.update({msgid: self})
 
     def detach(self):
         """Detach the Message."""
         if self._msgid is not None and self._msgid in self._room.msgs:
-            del self._room.msgs[self._msgid]
-            self._msgid = None
+            self._room.msgs.pop(self._msgid)
+            self._msgid = None  # TODO esto es necesario?
 
     def delete(self):
         """Borrar el mensaje de la sala (Si es mod)"""
@@ -854,6 +854,7 @@ class WSConnection:
 
     def __repr__(self):
         return "<%s: %s>" % (self.__class__.__name__, self.name)
+
     def __init__(self, mgr: object = None, name: str = '', password: str = '', server: str = '',
                  port: str = None, origin: str = '') -> None:
         """
@@ -1039,13 +1040,21 @@ class WSConnection:
 
     def _messageFormat(self, msg: str, html: bool):
         formt = ''
-        if len(msg) > self.MAXLEN:
-            extra = ''
-            tmp = []
+
+        if len(msg) + msg.count(' ') * 5 > self.MAXLEN:
             if self.BIGMESSAGECUT:
-                extra = msg[:self.MAXLEN]
+                msg = msg[:self.MAXLEN]
             else:
-                return self._messageFormat(msg[:self.MAXLEN], html) + self._messageFormat(msg[self.MAXLEN:], html)
+                # partir el mensaje en pedacitos y formatearlos por separado
+                espacios = msg.count(' ') + msg.count('\t')
+                particion = self.MAXLEN
+                conteo = 0
+                while espacios * 6 + particion > self.MAXLEN:
+                    particion = len(msg[:particion - espacios])  # Recorrido máximo 5
+                    espacios = msg[:particion].count(' ') + msg[:particion].count('\t')
+                    conteo += 1
+                print(conteo)
+                return self._messageFormat(msg[:particion], html) + self._messageFormat(msg[particion:], html)
         fc = self.user.fontColor.lower()
         nc = self.user.nameColor
         if not html:
@@ -1376,6 +1385,10 @@ class PM(WSConnection):
     def _rcmd_seller_name(self, args):  # TODO completar
         pass
 
+    def _rcmd_show_fw(self, args):
+        """Comando sin argumentos que manda una advertencia de flood en una sala"""
+        self._callEvent('onFloodWarning')
+
     def _rcmd_track(self, args):  # TODO completar
         pass
 
@@ -1454,7 +1467,7 @@ class Room(WSConnection):
         self._history = deque(maxlen = self._maxHistoryLength)
         self._mqueue = dict()
         self._mods = dict()
-        self._msgs = dict()
+        self._msgs = dict()  # TODO esto y history es lo mismo?
         self._name = name
         self._nameColor = ''
         self._port = 1800  # TODO
@@ -1477,7 +1490,6 @@ class Room(WSConnection):
         # self.imsgs_drawn = 0 # TODO
         # self.imsgs_rendered = False # TODO
         self.mgr = mgr
-        self.msgs = dict()  # TODO esto y history es lo mismo?
         self.status = None
         if self.mgr:
             self._bgmode = int(self.mgr.bgmode)
@@ -1565,6 +1577,10 @@ class Room(WSConnection):
     def modnames(self):
         """Nombres de los moderadores en la sala"""
         return [x.name for x in self.mods]
+
+    @property
+    def msgs(self):
+        return self._msgs
 
     @property
     def nameColor(self):
@@ -1793,7 +1809,7 @@ class Room(WSConnection):
             canal = 32768
         if msg is None:
             return
-        msg = self._messageFormat(msg, html)
+        msg = self._messageFormat(str(msg), html)
         if not badge:
             badge = self.badge
         for x in msg:
@@ -1926,10 +1942,10 @@ class Room(WSConnection):
                       show = False):  # TODO country is not working
         # WARNING, fullpic is not working do not use"
         data = {
-            "u":      self._currentaccount[0],
-            "p":      self._currentaccount[1],
-            "auth":   "pwd", "arch": "h5", "src": "group", "action": "update",
-            "age":    age, "gender": gender, "location": country, "line": about,
+            "u":    self._currentaccount[0],
+            "p":    self._currentaccount[1],
+            "auth": "pwd", "arch": "h5", "src": "group", "action": "update",
+            "age":  age, "gender": gender, "location": country, "line": about,
             }
         headers = None
         if fullpic:
@@ -2392,10 +2408,6 @@ class Room(WSConnection):
         """Login correcto"""
         self._user = User(self._currentname)
 
-    def _rcmd_show_fw(self, args):
-        """Comando sin argumentos que manda una advertencia de flood en una sala"""
-        self._callEvent('onFloodWarning')
-
     def _rcmd_show_tb(self, args):  # TODO documentar
         self._callEvent("onFloodBan", int(args[0]))
 
@@ -2696,10 +2708,10 @@ class Gestor:
                             try:
                                 con.reconnect()
                                 counter = 0
-                            except socket.gaierror:  # En caso de que no haya internet
+                            except Exception as sgai:  # socket.gaierror:  # En caso de que no haya internet
                                 print(
-                                        '[{}][{:^5}] Aún no hay internet...'.format(time.strftime('%I:%M:%S %p'),
-                                                                                    counter),
+                                        '[{}][{:^5}] Aún no hay internet...[{}]'.format(time.strftime('%I:%M:%S %p'),
+                                                                                        counter, sgai),
                                         file = sys.stderr)
                                 counter += 1
                                 time.sleep(10)
