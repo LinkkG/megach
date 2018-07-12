@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.9.4.2
+Version: M1.9.5
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -44,7 +44,7 @@ import sys
 if sys.version_info[1] < 5:
     from html.parser import HTMLParser
 
-    html2.unescape = HTMLParser().unescape  # TODO revisar si hace falta instanciar la clase
+    html2.unescape = HTMLParser.unescape
 import mimetypes
 import os
 import queue
@@ -61,7 +61,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.9.4.2'
+version = 'M1.9.5'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -120,6 +120,18 @@ Fonts = {
     'arial': 0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4, 'palatino': 5, 'papirus': 6,
     'times': 7, 'typewriter': 8
     }
+Channels = {
+    "white": 0,
+    "red":   256,
+    "blue":  2048,
+    "mod":   32768
+    }  # TODO darle uso
+Badges = {
+    "shield": 64,
+    "staff":  128
+    }  # TODO darle uso
+ModChannels = Badges['shield'] | Badges['staff'] | Channels['mod']
+
 
 
 def _genUid() -> str:
@@ -225,15 +237,6 @@ def getServerNumber(group: str) -> int:
 ################################################################
 # Cosas de los mensajes y los canales
 ################################################################
-Channels = {
-    "white":  0,
-    "red":    256,
-    "blue":   2048,
-    "shield": 64,
-    "staff":  128,
-    "mod":    32780
-    }  # TODO darle uso
-
 
 def _clean_message(msg: str, pm: bool = False) -> [str, str, str]:
     """
@@ -1430,7 +1433,9 @@ class PM(WSConnection):
     def _rcmd_wlapp(self, args):
         """Alguien ha iniciado sesión en la app"""
         user = User(args[0])
-        ctime = float(args[1])
+        last_on = float(args[1])
+        self._status[user] = [last_on, False, last_on]
+        self._callEvent("onPMContactApp", user)
 
         # TODO revisar esta sección
 
@@ -1492,7 +1497,6 @@ class Room(WSConnection):
         # self.imsgs_drawn = 0 # TODO
         # self.imsgs_rendered = False # TODO
         self.mgr = mgr
-        self.status = None
         if self.mgr:
             self._bgmode = int(self.mgr.bgmode)
             super().connect()
@@ -1514,7 +1518,7 @@ class Room(WSConnection):
 
     @property
     def allusernames(self):
-        return sorted([x[1].name for x in set(self._userdict.values())])
+        return sorted(set([x[1].name for x in self._userdict.values()]))
 
     @property
     def badge(self):
@@ -2054,20 +2058,16 @@ class Room(WSConnection):
         # TODO reemplazar por los flags
         if channel and channel.isdigit():
             channel = int(channel)
+            badge = (channel & 192) // 64
             if channel < 256:  # Canal Normal
-                badge = 0 if channel < 64 else 1 if channel < 128 else 2
                 channel = 0
-            elif 256 <= channel < 2048:  # Canal Rojo con o sin badge
-                badge = 0 if channel < 256 + 64 else 1 if channel < 256 + 128 else 2
+            elif 256 <= channel < 2048:
                 channel = 256
             elif 2048 <= channel < 2304:
-                badge = 0 if channel < 2048 + 64 else 1 if channel < 2048 + 128 else 2
                 channel = 2048
             elif 2304 <= channel < 32768:
-                badge = 0 if channel < 2304 + 64 else 1 if channel < 2304 + 128 else 2
                 channel = 2304
             elif channel >= 32768:
-                badge = 0 if channel < 32768 + 64 else 1 if channel < 32768 + 128 else 2
                 channel = 32768
         body, n, f = _clean_message(rawmsg)
         if name == "":
@@ -2085,7 +2085,7 @@ class Room(WSConnection):
             else:
                 nameColor = None
         user = User(name, ip = ip, isanon = name[0] in '#!')  # TODO
-        if ip != user.ip:
+        if ip and ip != user.ip:
             user._ip = ip
         if f:
             fontSize, fontColor, fontFace = _parseFont(f.strip())
@@ -2998,6 +2998,10 @@ class Gestor:
         Al conectarse a la mensajería privada
         @param pm: El PM
         """
+        pass
+
+    def onPMContactApp(self, pm: PM, user: _User):
+        # TODO comentar
         pass
 
     def onPMContactOffline(self, pm: PM, user: _User):
