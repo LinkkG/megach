@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.9.5
+Version: M1.9.6
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -131,7 +131,6 @@ Badges = {
     "staff":  128
     }  # TODO darle uso
 ModChannels = Badges['shield'] | Badges['staff'] | Channels['mod']
-
 
 
 def _genUid() -> str:
@@ -1394,6 +1393,12 @@ class PM(WSConnection):
         """Comando sin argumentos que manda una advertencia de flood en una sala"""
         self._callEvent('onFloodWarning')
 
+    def _rcmd_status(self, args):  # TODO completar
+
+        # status:linkkg:1531458009.39:online:
+        # status:linkkg:1531458452.5:app:
+        pass
+
     def _rcmd_track(self, args):  # TODO completar
         pass
 
@@ -1496,6 +1501,7 @@ class Room(WSConnection):
         self._usercount = 0
         # self.imsgs_drawn = 0 # TODO
         # self.imsgs_rendered = False # TODO
+        self._waitingmore = 0  # Para usar, iniciar en -1 TODO
         self.mgr = mgr
         if self.mgr:
             self._bgmode = int(self.mgr.bgmode)
@@ -2230,6 +2236,12 @@ class Room(WSConnection):
         if self._bgmode:
             self._sendCommand('msgbg', str(self._bgmode))
 
+    def _rcmd_gotmore(self, args):
+        num = args[0]
+        self._waitingmore = int(num)
+        if len(self._history) < self._history.maxlen and self._waitingmore is not None:
+            self._sendCommand("get_more:20:" + str(self._waitingmore + 1))
+
     def _rcmd_groupflagsupdate(self, args):
         flags = args[0]
         self._flags = self._parseFlags(flags, GroupFlags)
@@ -2297,6 +2309,9 @@ class Room(WSConnection):
             # TODO
         if args and debug:
             print('New Unhandled arg on inited ', file = sys.stderr)
+        # comprobar el tamaño máximo del history y solicitar anteriores hasta llenar
+        if len(self._history) < self._history.maxlen and self._waitingmore < 0:
+            self._sendCommand("get_more:20:" + str(self._waitingmore + 1))  # TODO revisar
 
     def _rmd_logoutfirst(self, args):  # TODO al intentar iniciar sesión sin haber cerrado otra
         pass
@@ -2313,14 +2328,20 @@ class Room(WSConnection):
             mods[User(name)] = self._parseFlags(powers, ModFlags)
             mods[User(name)].isadmin = int(powers) & AdminFlags != 0
         premods = self.mods
-        self._mods = mods
         if self._user not in premods:  # Si el bot no estaba en los mods antes
-            self._callEvent('onModChange', set(mods.keys()) - premods)  # TODO, problemas acá?
+            self._callEvent('onModsChange', set(mods.keys()) - premods)  # TODO, problemas acá?
         else:
             for user in set(mods.keys()) - premods:  # Con Mod
                 self._callEvent("onModAdd", user)
             for user in premods - set(mods.keys()):  # Sin Mod
                 self._callEvent("onModRemove", user)
+            for user in premods & set(mods.keys()):  # Cambio de privilegios
+                # TODO acelear y evitar errores
+                privs = [x for x in dir(mods.get(user)) if
+                         x[0] != '_' and getattr(self._mods.get(user), x) != getattr(mods.get(user), x)]
+                if privs:
+                    self._callEvent('onModChange', user, privs)
+        self._mods = mods
 
     def _rcmd_miu(self, args):  # TODO documentar
         self._callEvent('onPictureChange', User(args[0]))
@@ -2331,6 +2352,10 @@ class Room(WSConnection):
             self._usercount = int(args[0], 16)
             # assert not self._userdict or len(self._userdict) == self._usercount, 'Warning count doesnt match'  # TODO
             self._callEvent("onUserCountChange")
+
+    def _rcmd_nomore(self, args):
+        """Cuando ya no hay mensajes anteriores a los recibidos del historial de una sala"""
+        self._waitingmore = None  # TODO revisar
 
     def _rcmd_ok(self, args):  # TODO
         self._connected = True
@@ -2485,6 +2510,10 @@ class Room(WSConnection):
                 "src":    User(params[4])
                 }
         self._callEvent("onUnBanlistUpdate")
+
+    def _rcmd_updateprofile(self, args):
+        """Cuando alguien actualiza su perfil en un chat"""
+        self._callEvent('onUpdateProfile', User(args[0]))
 
     def _rcmd_updgroupinfo(self, args):  # TODO documentar
         self._info = [urlreq.unquote(args[0]), urlreq.unquote(args[1])]
@@ -2972,7 +3001,16 @@ class Gestor:
     def onModAdd(self, room, user):  # TODO documentar
         pass
 
-    def onModChange(self, room, users):  # TODO documentar
+    def onModChange(self, room, user, privs):
+        """
+        Al cambiar los privilegios de un moderador
+        @param room: Sala en la que ocurre el evento
+        @param user: Usuario al que le han cambiado sus privilegios
+        @param privs: Nombres de los privilegios modificados(nombres según modflags)
+        """
+        pass
+
+    def onModsChange(self, room, user):  # TODO documentar
         pass
 
     def onModRemove(self, room, user):  # TODO documentar
@@ -3113,6 +3151,9 @@ class Gestor:
         Cuando se actualiza la información de una sala
         @param room: Sala donde ocurre el cambio
         """
+        pass
+
+    def onUpdateProfile(self, room, user):  # TODO documentar
         pass
 
     def onUserCountChange(self, room):
