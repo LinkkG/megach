@@ -44,7 +44,7 @@ import sys
 if sys.version_info[1] < 5:
     from html.parser import HTMLParser
 
-    html2.unescape = HTMLParser.unescape
+    html2.unescape = HTMLParser().unescape
 import mimetypes
 import os
 import queue
@@ -1501,7 +1501,8 @@ class Room(WSConnection):
         self._usercount = 0
         # self.imsgs_drawn = 0 # TODO
         # self.imsgs_rendered = False # TODO
-        self._waitingmore = 0  # Para usar, iniciar en -1 TODO
+        # TODO Propenso a errores y retrasos
+        self._waitingmore = 0  # Para activarlo, iniciar en 1
         self.mgr = mgr
         if self.mgr:
             self._bgmode = int(self.mgr.bgmode)
@@ -2238,9 +2239,11 @@ class Room(WSConnection):
 
     def _rcmd_gotmore(self, args):
         num = args[0]
-        self._waitingmore = int(num)
-        if len(self._history) < self._history.maxlen and self._waitingmore is not None:
-            self._sendCommand("get_more:20:" + str(self._waitingmore + 1))
+        if self._waitingmore:
+            self._waitingmore = int(num) + 1
+        if len(self._history) < self._history.maxlen and self._waitingmore:
+
+            self._sendCommand("get_more:20:" + str(self._waitingmore))
 
     def _rcmd_groupflagsupdate(self, args):
         flags = args[0]
@@ -2310,8 +2313,8 @@ class Room(WSConnection):
         if args and debug:
             print('New Unhandled arg on inited ', file = sys.stderr)
         # comprobar el tamaño máximo del history y solicitar anteriores hasta llenar
-        if len(self._history) < self._history.maxlen and self._waitingmore < 0:
-            self._sendCommand("get_more:20:" + str(self._waitingmore + 1))  # TODO revisar
+        if len(self._history) < self._history.maxlen and self._waitingmore > 0:
+            self._sendCommand("get_more:20:" + str(self._waitingmore - 1))  # TODO revisar
 
     def _rmd_logoutfirst(self, args):  # TODO al intentar iniciar sesión sin haber cerrado otra
         pass
@@ -2355,7 +2358,7 @@ class Room(WSConnection):
 
     def _rcmd_nomore(self, args):
         """Cuando ya no hay mensajes anteriores a los recibidos del historial de una sala"""
-        self._waitingmore = None  # TODO revisar
+        self._waitingmore = 0  # TODO revisar
 
     def _rcmd_ok(self, args):  # TODO
         self._connected = True
