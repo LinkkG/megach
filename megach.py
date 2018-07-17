@@ -61,7 +61,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.9.5'
+version = 'M1.9.6'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1816,10 +1816,9 @@ class Room(WSConnection):
         """
         if canal is None:
             canal = self.channel
-        if canal < 4:
-            canal = (((canal & 2) << 2 | (canal & 1)) << 8)
-        elif canal == 4:
-            canal = 32768
+        # Nota el canal máximo es 7, los demás serán 0
+        canal = (((canal & 1) | (canal & 2) << 2) << 8 | (canal & 4) << 13)
+
         if msg is None:
             return
         msg = self._messageFormat(str(msg), html)
