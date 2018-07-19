@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.9.6
+Version: M1.9.7
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -61,7 +61,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.9.6'
+version = 'M1.9.7'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1687,10 +1687,14 @@ class Room(WSConnection):
         Agrega un moderador nuevo a la sala con los poderes básicos
         @param user: str. Usuario que será mod
         @param powers: Poderes del usuario mod, un string con números
+        @return: bool indicando si se hará o no
         """
         if isinstance(user, _User):
             user = user.name
-        self._sendCommand('addmod:{}:{}'.format(user, powers))
+        if self.user == self.owner or (self.user in self.mods and self.modflags.get(self.user.name).EDIT_MODS):
+            self._sendCommand('addmod:{}:{}'.format(user, powers))
+            return True
+        return False
 
     def banMessage(self, msg: Message) -> bool:
         if self.getLevel(self.user) > 0:
@@ -2065,16 +2069,7 @@ class Room(WSConnection):
         if channel and channel.isdigit():
             channel = int(channel)
             badge = (channel & 192) // 64
-            if channel < 256:  # Canal Normal
-                channel = 0
-            elif 256 <= channel < 2048:
-                channel = 256
-            elif 2048 <= channel < 2304:
-                channel = 2048
-            elif 2304 <= channel < 32768:
-                channel = 2304
-            elif channel >= 32768:
-                channel = 32768
+            channel = ((channel & 2048) | (channel & 256)) | (channel & 35072)
         body, n, f = _clean_message(rawmsg)
         if name == "":
             nameColor = None
@@ -2418,11 +2413,11 @@ class Room(WSConnection):
                 self._callEvent('onAnonLeave', user, puid)
         elif cambio == '1':  # Join
             user.addSessionId(self, ssid)  # Agregar la sesión al usuario
-            self._userdict[ssid] = [contime, user]  # Agregar la sesión a la sala
             if not user.isanon and user not in self.userlist:
                 self._callEvent('onJoin', user, puid)
             elif user.isanon:
                 self._callEvent('onAnonJoin', user, puid)
+            self._userdict[ssid] = [contime, user]  # Agregar la sesión a la sala
         else:  # 2 Account Change
             # Quitar la cuenta anterior de la lista y agregar la nueva
             # TODO conectar cuentas que han cambiado usando este método
