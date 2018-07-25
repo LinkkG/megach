@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.9.8
+Version: M1.2.0
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -52,6 +52,7 @@ import random
 import re
 import select
 import socket
+import string
 import time
 import threading
 import urllib.parse as urlparse
@@ -61,7 +62,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.9.8'
+version = 'M1.2.0'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -323,6 +324,7 @@ class WS:
     """
     Agrupamiento de métodos estáticos para encodear y chequear frames en conexiones del protocolo WebSocket
     """
+    _BOUNDARY_CHARS = string.digits + string.ascii_letters
     FrameInfo = namedtuple("FrameInfo", ["fin", "opcode", "masked", "payload_length"])
     CONTINUATION = 0
     TEXT = 1
@@ -334,33 +336,6 @@ class WS:
     def genseckey():
         """Genera una clave de Seguridad Websocket"""
         return base64.encodebytes(os.urandom(16)).decode('utf-8').strip()
-
-    @staticmethod
-    def encode(payload: object) -> bytes:
-        """
-        Encodea un mensaje y lo enmascara con las reglas obligatorias del protocolo websocket
-        :param payload:El string o arreglo de bytes a encodear para websocket
-        :return: El arreglo de Bytes enmascarado
-        """
-        opcode = WS.TEXT
-        pl = payload
-        frame = bytearray()
-        mask = os.urandom(4)
-        if isinstance(pl, str):
-            pl = pl.encode("utf-8", "replace")
-        frame.append(opcode | 128)
-        int()
-        if len(pl) <= 125:
-            frame.append(len(pl) | 128)
-        elif len(pl) <= 65535:
-            frame.append(126 | 128)
-            frame += len(pl).to_bytes(2, "big")
-        else:
-            frame.append(127 | 128)
-            frame += len(pl).to_bytes(8, "big")
-        frame += mask
-        frame += bytes(x ^ mask[i % 4] for i, x in enumerate(pl))
-        return bytes(frame)
 
     @staticmethod
     def checkFrame(buffer: bytes):
@@ -415,6 +390,78 @@ class WS:
         elif "sec-websocket-accept" not in headers:
             return False
         return headers["sec-websocket-accept"]
+
+    @staticmethod
+    def encode(payload: object) -> bytes:
+        """
+        Encodea un mensaje y lo enmascara con las reglas obligatorias del protocolo websocket
+        :param payload:El string o arreglo de bytes a encodear para websocket
+        :return: El arreglo de Bytes enmascarado
+        """
+        opcode = WS.TEXT
+        pl = payload
+        frame = bytearray()
+        mask = os.urandom(4)
+        if isinstance(pl, str):
+            pl = pl.encode("utf-8", "replace")
+        frame.append(opcode | 128)
+        int()
+        if len(pl) <= 125:
+            frame.append(len(pl) | 128)
+        elif len(pl) <= 65535:
+            frame.append(126 | 128)
+            frame += len(pl).to_bytes(2, "big")
+        else:
+            frame.append(127 | 128)
+            frame += len(pl).to_bytes(8, "big")
+        frame += mask
+        frame += bytes(x ^ mask[i % 4] for i, x in enumerate(pl))
+        return bytes(frame)
+
+    @staticmethod
+    def encode_multipart(data, files, boundary = None):
+        """
+        Encodear información para peticiones multipart/form-data
+        @param data: Datos a enviar (diccionario)
+        @param files: Archivos a enviar en formato ({'filename':<name>,'content':<content>})
+        @param boundary: Separador de los datos codificados
+        @return: String encodeado
+        """
+
+        def escape_quote(s):
+            return s.replace('"', '\\"')
+
+        if boundary is None:
+            boundary = ''.join(random.choice(WS._BOUNDARY_CHARS) for i in range(30))
+        lineas = []
+        for nombre, valor in data.items():
+            lineas.extend(('--%s' % boundary,
+                           'Content-Disposition: form-data; name="%s"' % nombre,
+                           '',
+                           str(valor)))
+        for nombre, valor in files.items():
+            filename = valor['filename']
+            if 'mimetype' in valor:
+                mimetype = valor['mimetype']
+            else:
+                mimetype = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+            lineas.extend(('--%s' % boundary,
+                           'Content-Disposition: form-data; name="%s"; filename="%s"' % (
+                           escape_quote(nombre), escape_quote(filename)),
+                           'Content-Type: %s' % mimetype,
+                           '',
+                           valor['content']
+                           ))
+        lineas.extend((
+            '--%s--' % boundary,
+            '',
+            ))
+        body = '\r\n'.join(lineas)
+        headers = {
+            'Content-Type':   'multipart/form-data; boundary=%s' % boundary,
+            'Content-Length': str(len(body))
+            }
+        return (body, headers)
 
     @staticmethod
     def frameInfo(buffer: bytes) -> FrameInfo:
@@ -500,43 +547,38 @@ class WS:
 
     @staticmethod
     def RPOST(url, data, headers = None):
-        """ TODO Asegurar valor de retorno
-        Solicitar un token de id usando un nombre y una clave
-        @param data: Los datos que serán enviados en la consulta POST
-        @param headers: Las cabeceras de la consulta POST
-        @param url: La url a la que se hará la consulta
         """
-        data = urlparse.urlencode(data).encode()
+        Enviar una petición post
+        @param url: La url de la consulta
+        @param data: Los datos enviados a la url
+        @param headers: Las cabeceras de la petición post
+        @return:
+        """
+        if type(data) is dict:  # TODO debería hacer esto solo si es un diccionario
+            data = urlparse.urlencode(data).encode('latin-1')
+        elif type(data) is str:
+            data = data.encode('latin-1')
         if not headers:
             headers = {"host": "chatango.com", "origin": "http://st.chatango.com"}
         pet = urlreq.Request(url, data = data,
                              headers = headers)
         try:
             resp = urlreq.urlopen(pet)
-            headers = resp.headers
-            lectura = resp.read()  # TODO variable de depuración, eliminar
+            return resp
         except HTTPError as e:
-            if debug:
-                print('Error code: ', e.code)
-            return None
+            raise  # e.code
         except URLError as e:
-            if debug:
-                print('Error Reason: ', e.reason)
-            return None
+            raise  # e.reason
         except Exception as e:
-            if debug:
-                print('Error, not controlled: ', str(e))
-            return None
-        return headers
-
+            raise  # TODO no controlada
 
 def User(name: str, **kwargs):
     """
     Un def que representa a la clase _User. Si el usuario ya existe, mejor regresa ese
     y en caso de que no, lo crea y lo agrega a la lista
-    :param name: Nombre del usuario
-    :param kwargs: Datos que contendrá el usuario
-    :return: Usuario nuevo o encontrado en la lista
+    @param name: Nombre del usuario
+    @param kwargs: Datos que contendrá el usuario
+    @return: Usuario nuevo o encontrado en la lista
     """
     if name is None:
         name = ""
@@ -1235,7 +1277,7 @@ class PM(WSConnection):
         resp = WS.RPOST("http://chatango.com/login", data)
         if not resp:
             return None
-        for header, value in resp.items():
+        for header, value in resp.headers.items():
             if header.lower() == "set-cookie":
                 m = self._auth_re.search(value)
                 if m:
@@ -1821,9 +1863,8 @@ class Room(WSConnection):
         """
         if canal is None:
             canal = self.channel
-        # Nota el canal máximo es 7, los demás serán 0
-        canal = (((canal & 1) | (canal & 2) << 2) << 8 | (canal & 4) << 13)
-
+        if canal < 8:
+            canal = (((canal & 1) | (canal & 2) << 2) << 8 | (canal & 4) << 13)
         if msg is None:
             return
         msg = self._messageFormat(str(msg), html)
@@ -1957,51 +1998,69 @@ class Room(WSConnection):
 
     def updateProfile(self, age = '', gender = '', country = '', about = '', fullpic = None,
                       show = False):
-        """"AGE"""
-        # TODO country is not working
-        # WARNING, fullpic is not working do not use"
+        """
+        TODO sacar la parte del archivo
+        Actualiza el perfil del usuario
+        NOTA: Solo es posible actualizar imagen o información por separado
+        @param age: Edad
+        @param gender: Género
+        @param country: Nombre del país
+        @param about: Acerca de mí
+        @param fullpic: Dirección de una imagen(local o web). Si se envia esto se ignorará lo demás.
+        @param show: Mostrar el perfil en la lista pública
+        @return: True o False
+        """
         data = {
-            "u":    self._currentaccount[0],
-            "p":    self._currentaccount[1],
-            "auth": "pwd", "arch": "h5", "src": "group", "action": "update",
-            "age":  age, "gender": gender, "location": country, "line": about,
-            }
-        headers = None
+            'u':    self._currentaccount[0], 'p': self._currentaccount[1],
+            'auth': 'pwd', 'arch': 'h5', 'src': 'group', 'action': 'update',
+            'age':  age, 'gender': gender, 'location': country, 'line': about
+        }
+        headers = {}
         if fullpic:
-            data.update({"action": "fullpic"})
-            boundary = '--SEPARADOR'
-            data = tuple(data.items())
-            partes = []
-            partes.extend(
-                    ['--' + boundary,
-                     'Content-Disposition: form-data; name="%s"' % name,
-                     '',
-                     value,
-                     ]
-                    for name, value in data
-                    )
-            partes.extend([
-                ['--' + boundary,
-                 'Content-Disposition: file; name="Filedata"; filename="%s"' % fullpic,
-                 'Content-Type: %s' % mimetypes.guess_type(fullpic)[0],
-                 '',
-                 str(open(fullpic, "rb").read()),
-                 ]])
-            flattened = list(__import__("itertools").chain(*partes))
-            flattened.append('--' + boundary + '--')
-            flattened.append('')
-            data = '\r\n'.join(str(x) for x in flattened)
-            headers = {
-                "host":           "chatango.com", "origin": "http://st.chatango.com",
-                "Content-type":   'multipart/form-data; boundary=' + boundary,
-                "Content-length": len(data)  # len(data)
-                }
-
+            if fullpic.startswith('http:') or fullpic.startswith('https:'):
+                archivo = urlreq.urlopen(fullpic)
+            else:
+                archivo = open(fullpic, 'rb')
+            data.update({'action': 'fullpic'})
+            files = {'Filedata': {'filename': fullpic, 'content': archivo.read().decode('latin-1')}}
+            data, headers = WS.encode_multipart(data, files)
         if WS.RPOST("http://chatango.com/updateprofile", data, headers = headers):
             return True
         else:
             return False
-        pass
+
+    def uploadImage(self, img, url = False):
+        """
+        TODO sacar la parte del archivo
+        Sube una imagen al servidor y regresa el número
+        @param img: url de una imagen (local o web)
+        @param url: Indica si retornar una url o solo el número. Defecto(False)
+        @return: string con url o número de la imagen
+        """
+        data = {
+            'u': self._currentaccount[0],
+            'p': self._currentaccount[1]
+        }
+        if img.startswith("http:") or img.startswith("https:"):
+            archivo = urlreq.urlopen(img)
+        else:
+            archivo = open(img, 'rb')
+        files = {'filedata': {'filename': img, 'content': archivo.read().decode('latin-1')}}
+        archivo.close()
+        data, headers = WS.encode_multipart(data, files)
+        headers.update({"host": "chatango.com", "origin": "http://st.chatango.com"})
+        res = WS.RPOST("http://chatango.com/uploadimg", data, headers = headers)
+        if res:
+            res = res.read().decode('utf-8')
+            if 'success' in res:
+                if url:
+                    return "http://ust.chatango.com/um/%s/%s/%s/img/t_%s.jpg" % (
+                        self.user.name[0], self.user.name[1], self.user.name, res.split(':', 1)[1])
+                else:
+                    return res.split(':', 1)[1]
+        else:
+            return False
+
 
     ####################
     # Utilería del bot
@@ -2723,6 +2782,13 @@ class Gestor:
                             if con.sock:
                                 size = sock.send(con.wbuf)
                                 con._wbuf = con.wbuf[size:]
+                                # TODO para la ordenacion de mensajes
+                                # while con.wbuf.split(b'\x81') and len(con.wbuf.split(b'\x81'))>1:
+                                #    size = sock.send(b'\x81'+con.wbuf.split(b'\x81')[1])
+                                #    con._wbuf = con.wbuf[size:]
+                                # else:
+                                #    size = sock.send(con.wbuf)
+                                #    con._wbuf = con.wbuf[size:]
                     except Exception as e:
                         if debug:
                             print("Error sock.send " + str(e), sys.stderr)
