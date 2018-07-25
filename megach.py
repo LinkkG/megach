@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.2.0
+Version: M1.2.1
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -62,7 +62,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.2.0'
+version = 'M1.2.1'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1966,7 +1966,8 @@ class Room(WSConnection):
         # else:
         #    return False
 
-    def updateBG(self, bgc = '', ialp = '100', useimg = '0', bgalp = '100', align = 'tl', isvid = '0', tile = '0'):
+    def updateBg(self, bgc = '', ialp = '100', useimg = '0', bgalp = '100', align = 'tl', isvid = '0', tile = '0',
+                 bgpic = None):
         """
         TODO ADVERTENCIA, está en fase de pruebas y sigue sujeto a cambios. usar bajo su propio riesgo
         @param bgc: Color del bg Hexadecimal
@@ -1990,16 +1991,30 @@ class Room(WSConnection):
             "tile":   tile,
             'hasrec': '0'
             }
-        if WS.RPOST("http://chatango.com/updatemsgbg", data, headers = None):
+        headers = None
+        if bgpic:
+            data = {
+                "lo": self._currentaccount[0],
+                "p":  self._currentaccount[1]
+            }
+            if bgpic.startswith("http:") or bgpic.startswith("https:"):
+                archivo = urlreq.urlopen(bgpic)
+            else:
+                archivo = open(bgpic, 'rb')
+            files = {'Filedata': {'filename': bgpic, 'content': archivo.read().decode('latin-1')}}
+            data, headers = WS.encode_multipart(data, files)
+            headers.update({"host": "chatango.com", "origin": "http://st.chatango.com"})
+        if WS.RPOST("http://chatango.com/updatemsgbg", data, headers):
             self._sendCommand("miu")
             return True
         else:
             return False
 
     def updateProfile(self, age = '', gender = '', country = '', about = '', fullpic = None,
-                      show = False):
+                      show = False, **kw):
         """
         TODO sacar la parte del archivo
+        TODO eliminar la variable **kw
         Actualiza el perfil del usuario
         NOTA: Solo es posible actualizar imagen o información por separado
         @param age: Edad
@@ -2015,6 +2030,7 @@ class Room(WSConnection):
             'auth': 'pwd', 'arch': 'h5', 'src': 'group', 'action': 'update',
             'age':  age, 'gender': gender, 'location': country, 'line': about
         }
+        data.update(**kw)
         headers = {}
         if fullpic:
             if fullpic.startswith('http:') or fullpic.startswith('https:'):
@@ -2024,12 +2040,13 @@ class Room(WSConnection):
             data.update({'action': 'fullpic'})
             files = {'Filedata': {'filename': fullpic, 'content': archivo.read().decode('latin-1')}}
             data, headers = WS.encode_multipart(data, files)
+            headers.update({"host": "chatango.com", "origin": "http://st.chatango.com"})
         if WS.RPOST("http://chatango.com/updateprofile", data, headers = headers):
             return True
         else:
             return False
 
-    def uploadImage(self, img, url = False):
+    def uploadImage(self, img, url = False, **kw):
         """
         TODO sacar la parte del archivo
         Sube una imagen al servidor y regresa el número
@@ -2046,6 +2063,7 @@ class Room(WSConnection):
         else:
             archivo = open(img, 'rb')
         files = {'filedata': {'filename': img, 'content': archivo.read().decode('latin-1')}}
+        files['filedata'].update(**kw)
         archivo.close()
         data, headers = WS.encode_multipart(data, files)
         headers.update({"host": "chatango.com", "origin": "http://st.chatango.com"})
