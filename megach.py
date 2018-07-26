@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.2.1
+Version: M1.2.2
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -62,7 +62,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.2.1'
+version = 'M1.2.2'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1582,7 +1582,7 @@ class Room(WSConnection):
     @property
     def banlist(self):
         """La lista de usuarios baneados en la sala"""
-        return self._banlist
+        return list(self._banlist.keys())
 
     @property
     def botname(self):  # TODO anon o temp !#
@@ -1666,7 +1666,7 @@ class Room(WSConnection):
 
     @property
     def unbanlist(self):
-        return self._unbanlist
+        return list(self._unbanlist.keys())
 
     @property
     def user(self):
@@ -2058,13 +2058,16 @@ class Room(WSConnection):
             'u': self._currentaccount[0],
             'p': self._currentaccount[1]
         }
-        if img.startswith("http:") or img.startswith("https:"):
-            archivo = urlreq.urlopen(img)
+        if type(img) == str and (img.startswith("http:") or img.startswith("https:")):
+            archivo = urlreq.urlopen(img).read()
+        elif type(img) == str:
+            archivo = open(img, 'rb').read()
         else:
-            archivo = open(img, 'rb')
-        files = {'filedata': {'filename': img, 'content': archivo.read().decode('latin-1')}}
+            archivo = img.read()
+        files = {'filedata': {'filename': img, 'content': archivo.decode('latin-1')}}
         files['filedata'].update(**kw)
-        archivo.close()
+        if hasattr(archivo, 'close'):
+            archivo.close()
         data, headers = WS.encode_multipart(data, files)
         headers.update({"host": "chatango.com", "origin": "http://st.chatango.com"})
         res = WS.RPOST("http://chatango.com/uploadimg", data, headers = headers)
@@ -2076,8 +2079,7 @@ class Room(WSConnection):
                         self.user.name[0], self.user.name[1], self.user.name, res.split(':', 1)[1])
                 else:
                     return res.split(':', 1)[1]
-        else:
-            return False
+        return False
 
 
     ####################
@@ -2118,7 +2120,9 @@ class Room(WSConnection):
         self._sendCommand("removeblock", unid, ip, name)
 
     def requestUnBanlist(self):
-        pass
+        self._sendCommand('blocklist', 'unblock',
+                          str(int(time.time() + self._correctiontime)),
+                          'next', '500', 'anons', '1')
 
     ####################
     # Comandos recibidos
@@ -2414,7 +2418,7 @@ class Room(WSConnection):
                 # TODO acelear y evitar errores
                 privs = [x for x in dir(mods.get(user)) if
                          x[0] != '_' and getattr(self._mods.get(user), x) != getattr(mods.get(user), x)]
-                if privs:
+                if privs and privs != ['MOD_ICON_VISIBLE']:
                     self._callEvent('onModChange', user, privs)
         self._mods = mods
 
@@ -3226,6 +3230,9 @@ class Gestor:
         @param user: Usuario que quita el ban
         @param target: Usuaro que ha sido desbaneado
         """
+        pass
+
+    def onUnBanlistUpdate(self, room):  # TODO documentar
         pass
 
     def onUpdateInfo(self, room):
