@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.2.2
+Version: M1.2.3
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -62,7 +62,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.2.2'
+version = 'M1.2.3'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -248,7 +248,7 @@ def _clean_message(msg: str, pm: bool = False) -> [str, str, str]:
     @returns: cleaned message, n tag contents, f tag contents
     """
     n = re.search("<n(.*?)/>", msg)
-    if pm:
+    if not pm:
         f = re.search("<f(.*?)>", msg)
         msg = re.sub("<f.*?>", "", msg)
     else:
@@ -546,7 +546,7 @@ class WS:
         return bytes(x ^ mask[i % 4] for i, x in enumerate(buffer[4:]))
 
     @staticmethod
-    def RPOST(url, data, headers = None):
+    def RPOST(url, data = None, headers = None):
         """
         Enviar una petición post
         @param url: La url de la consulta
@@ -596,11 +596,13 @@ class _User:
     Iniciarlo sin el guion bajo para evitar inconvenientes
     """
 
+    def __dir__(self):
+        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
     def __radd__(self, other):
-        return str(other) + self.name
+        return str(other) + self.showname
 
     def __add__(self, other):
-        return self.name + str(other)
+        return self.showname + str(other)
 
     def __str__(self):
         return self.showname
@@ -643,6 +645,10 @@ class _User:
     def fontSize(self) -> int:
         """Tamaño de la última fuente usada por el usuario"""
         return self._fontSize
+
+    @property
+    def font(self) -> str:
+        return '<f x%s%s="%s">' % (self.fontSize, self.fontColor, self.fontFace)
 
     @property
     def ip(self) -> str:
@@ -757,6 +763,9 @@ class Message:
 
     def __add__(self, otro):
         return self.body + str(otro)
+
+    def __dir__(self):
+        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
 
     def __radd__(self, otro):
         return str(otro) + self.body
@@ -892,6 +901,9 @@ class WSConnection:
     BIGMESSAGECUT = False  # Si es True se manda solo un pedazo de los mensajes, false y se mandan todos
     MAXLEN = 2700  # 2900 ON PM IS > 12000
     PINGINTERVAL = 90  # Intervalo para enviar pings, Si llega a 300 se desconecta
+
+    def __dir__(self):
+        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
 
     def __str__(self):
         return self.name
@@ -1214,6 +1226,9 @@ class PM(WSConnection):
     Clase Base para la conexiones con la mensajería privada de chatango
     """
 
+    def __dir__(self):
+        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
+
     def __init__(self, mgr, name, password):
         """
         Clase que maneja una conexión con la mensajería privada de chatango
@@ -1422,9 +1437,31 @@ class PM(WSConnection):
         self._callEvent("onPMMessage", user, msg)
 
     def _rcmd_msgoff(self, args):  # TODO
-        user = User(args[0])
-        body = _strip_html(":".join(args[5:]))
-        self._callEvent("onPMOfflineMessage", user, body)
+        name = args[0] or args[1]  # Usuario o tempname
+        if not name:
+            name = args[2]  # Anon es unknown
+        user = User(name)  # Usuario
+        mtime = float(args[3]) - self._correctiontime
+        unknown2 = args[4]  # 0 TODO what is this?
+        rawmsg = ':'.join(args[5:])  # Mensaje
+        body, n, f = _clean_message(rawmsg, pm = True)
+        nameColor = n or None
+        fontSize, fontColor, fontFace = _parseFont(f)
+        msg = Message(
+                body = body,
+                fontColor = fontColor,
+                fontFace = fontFace,
+                fontSize = fontSize or '11',
+                nameColor = nameColor,
+                puid = None,
+                raw = rawmsg,
+                room = self,
+                time = mtime,
+                unid = None,
+                unknown2 = unknown2,
+                user = user
+                )
+        self._callEvent("onPMOfflineMessage", user, msg)
 
     def _rcmd_reload_profile(self, args):  # TODO completar
         pass
@@ -1506,6 +1543,9 @@ class Room(WSConnection):
     sus propiedades
     """
 
+    def __dir__(self):
+        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
+
     def __init__(self, name: str, mgr: object = None, account: tuple = None):
         # TODO , server = None, port = None, uid = None):
         # TODO not account start anon
@@ -1559,7 +1599,7 @@ class Room(WSConnection):
     @property
     def allshownames(self):
         """Todos los nombres de usuarios en la sala, incluyendo anons"""
-        return [x[1].showname for x in set(self._userdict.values())]
+        return [x.showname for x in sorted(self.alluserlist, key = lambda: x.name)]
 
     @property
     def alluserlist(self):
@@ -1568,7 +1608,7 @@ class Room(WSConnection):
 
     @property
     def allusernames(self):
-        return sorted(set([x[1].name for x in self._userdict.values()]))
+        return sorted(set([x.name for x in self.alluserlist]))
 
     @property
     def badge(self):
@@ -1774,8 +1814,8 @@ class Room(WSConnection):
                 return True
         return False
 
-    def deleteMessage(self, message):  # TODO Algo anda mal
-        if self.getLevel(self.user) > 0:
+    def deleteMessage(self, message):  # TODO comprobar permiso
+        if self.getLevel(self.user) > 0 and message.msgid:
             self._sendCommand("delmsg", message.msgid)
             return True
         return False
@@ -2050,7 +2090,7 @@ class Room(WSConnection):
         """
         TODO sacar la parte del archivo
         Sube una imagen al servidor y regresa el número
-        @param img: url de una imagen (local o web)
+        @param img: url de una imagen (local o web). También puede ser un archivo de bytes con la propiedad read()
         @param url: Indica si retornar una url o solo el número. Defecto(False)
         @return: string con url o número de la imagen
         """
@@ -2134,6 +2174,15 @@ class Room(WSConnection):
         # TODO Cambiar el self.user por el alias usado en login
         pass
 
+    def _rcmd_annc(self, args):  # TODO TERMINAR Y LLAMAR AL EVENTO
+        activado = args[0]
+        sala = args[1]
+        raw = args[2]
+        nc = _parseNameColor(raw)
+        fc = _parseFont(raw)
+        msg = _clean_message(raw)[0]
+
+
     def _rcmd_b(self, args):  # TODO reducir  y unificar con rcmd_i
         # TODO el reconocimiento de otros bots en anon está incompleto
         mtime = float(args[0]) - self._timecorrection  # Hora de envío del mensaje
@@ -2144,7 +2193,7 @@ class Room(WSConnection):
         msgnum = args[5]  # Número del mensaje Si no está no se debe procesar
         ip = args[6]  # Ip del usuario
         channel = args[7] or 0  # TODO se puede saber el premium con esto premium=4 bg=(8 y premium)
-        unknown2 = args[8]
+        unknown2 = args[8]  # TODO examinar este dato
         rawmsg = ':'.join(args[9:])
         badge = 0
         # TODO reemplazar por los flags
@@ -2314,10 +2363,11 @@ class Room(WSConnection):
             self._sendCommand('msgbg', str(self._bgmode))
 
     def _rcmd_gotmore(self, args):
+        # TODO probar este comando al borrar y cargar más mensajes
         num = args[0]
-        if self._waitingmore:
+        if self._waitingmore and self._waitingmore < 6:
             self._waitingmore = int(num) + 1
-        if len(self._history) < self._history.maxlen and self._waitingmore:
+        if len(self._history) < self._history.maxlen and 0 < self._waitingmore < 6:
 
             self._sendCommand("get_more:20:" + str(self._waitingmore))
 
@@ -2332,10 +2382,16 @@ class Room(WSConnection):
         tname = args[2]
         puid = args[3]
         unid = args[4]
-        i = args[5]  # TODO what is this for?
-        ip = args[6]  # TODO espacios 7 y 8
+        msgid = args[5]
+        ip = args[6]  # TODO espacio 8
+        channel = args[7]
         rawmsg = ":".join(args[9:])
         msg, n, f = _clean_message(rawmsg)
+        badge = 0
+        if channel and channel.isdigit():
+            channel = int(channel)
+            badge = (channel & 192) // 64
+            channel = ((channel & 2048) | (channel & 256)) | (channel & 35072)
         if name == "":
             nameColor = None
             name = "#" + tname
@@ -2357,18 +2413,19 @@ class Room(WSConnection):
         else:
             fontColor, fontFace, fontSize = None, None, None
         msg = Message(
-                time = mtime,
-                user = user,
+                badge = badge,
                 body = msg,
-                raw = rawmsg,
-                ip = ip,
-                nameColor = nameColor,
                 fontColor = fontColor,
                 fontFace = fontFace,
                 fontSize = fontSize,
-                unid = unid,
+                nameColor = nameColor,
+                msgid = msgid,
                 puid = puid,
-                room = self
+                raw = rawmsg,
+                room = self,
+                time = mtime,
+                unid = unid,
+                user = user
                 )
         if len(self._history) <= self._history.maxlen:
             self._history.appendleft(msg)
@@ -2606,6 +2663,9 @@ class Gestor:
     _TimerResolution = 0.2
     maxHistoryLength = 700
     PMHost = "c1.chatango.com"
+
+    def __dir__(self):
+        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
 
     def __repr__(self):
         return "<%s>" % self.__class__.__name__
@@ -3181,12 +3241,12 @@ class Gestor:
         """
         pass
 
-    def onPMOfflineMessage(self, pm, user, body):
+    def onPMOfflineMessage(self, pm, user, message):
         """
         Al recibir un mensaje cuando no se estuvo conectado
         @param pm: El PM
         @param user: El usuario que envió el mensaje
-        @param body: El mensaje
+        @param message: El mensaje es de tipo (Message)
         """
         pass
 
