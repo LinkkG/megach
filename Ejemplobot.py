@@ -145,7 +145,7 @@ class Mibot(megach.Gestor):
                 cmd = message.body
                 resultado = ''
                 splitted = ''.join(x for x in cmd if x.isalnum() or x in [' ']).split()
-                #######################################################
+                ######################################################
                 # NO PREFIX USED
 
                 for x in config.botnames + [room.user.showname.lower()]:
@@ -157,7 +157,7 @@ class Mibot(megach.Gestor):
                 if len(splitted) == 1:
                     room.message(random.choice(['¿Que pasa?', '¿Que quiere prro v:<', '¿Necesitas hamor?']))
                     return
-                #######################################################
+                ######################################################
                 # SIMI SECTION
                 try:
                     consulta, definicion = define('simi.json', cmd)
