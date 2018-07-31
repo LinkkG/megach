@@ -280,6 +280,18 @@ def limpiaTexto(texto):
     return texto
 
 
+def mysimianswer(cmd, **kw):
+    """Regresa una respuesta del simi.json al lado del fichero"""
+    ruta = os.path.join(os.getcwd(), 'simi.json')
+    consulta, definicion = define(ruta, cmd)
+    plantilla = string.Template(definicion)
+    if 'room' in kw:
+        donde = kw['room'].name
+    else:
+        donde = "Mensajería Privada"
+    resultado = plantilla.safe_substitute(**kw)
+    return resultado or 'No answer, sorry :v'
+
 accounts = [('Account1', 'Pass1'),
             ('Cuenta2', 'Clave2')]
 try:
