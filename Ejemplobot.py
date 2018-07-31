@@ -120,7 +120,7 @@ class Mibot(megach.Gestor):
 
                 elif cmd in ['sim', 'simi']:
                     clave, definicion = [x.strip() for x in args.split(":", 1)]
-                    archivo = open('simi.json', "a", encoding = 'utf-8')
+                    archivo = open(os.path.join(os.getcwd(), 'simi.json'), "a", encoding = 'utf-8')
                     archivo.write(clave + ":" + definicion + "\n")
                     resultado = "Respuesta guardada correctamente ;)"
                     room.message(resultado)
