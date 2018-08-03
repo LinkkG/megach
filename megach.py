@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.2.3
+Version: M1.2.4
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -62,7 +62,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.2.3'
+version = 'M1.2.4'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -175,9 +175,10 @@ def convertPM(msg: str):  # TODO Medir velocidad y acelerar
         left, found, right = right.partition(fuentes[0])
         s, c, f = _parseFont(found)
         s = s or '11'
+        if c and len(c) == 6:  # TODO reducir
+            c = '{:X}{:X}{:X}'.format(*tuple(round(int(c[i:i + 2], 16) / 17) for i in (0, 2, 4)))
         c = c.lower() or '00f'
         f = f or '1'
-        c = c[::2] if len(c) == 6 else c[:3]
         msg += left + '</g>'
         msg += '<g x{:0>2.2}s{}="{}">'.format(s, c, f)
         if len(fuentes) > 1:
@@ -671,6 +672,10 @@ class _User:
         return self._nameColor
 
     @property
+    def namecolor(self):
+        return '<n%s/>' % (self.nameColor[::2] if len(self.nameColor) == 6 else self.nameColor[:3])
+
+    @property
     def showname(self) -> str:
         """Nombre visible del usuario, excluye los ! y # en los anon"""
         return self._showname.strip('!#')
@@ -902,6 +907,12 @@ class WSConnection:
     MAXLEN = 2700  # 2900 ON PM IS > 12000
     PINGINTERVAL = 90  # Intervalo para enviar pings, Si llega a 300 se desconecta
 
+    def __radd__(self, other):
+        return str(other) + self.name
+
+    def __add__(self, other):
+        return self.name + str(other)
+
     def __dir__(self):
         return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
 
@@ -1126,7 +1137,8 @@ class WSConnection:
         #         "<u>", "<U>").replace("</u>", "</U>")
         if self.name == 'PM':
             formt = '<n{}/><m v="1"><g x{:0>2.2}s{}="{}">{}</g></m>'
-            fc = fc[::2] if len(fc) == 6 else fc[:3]
+            fc = '{:X}{:X}{:X}'.format(*tuple(round(int(fc[i:i + 2], 16) / 17) for i in (0, 2, 4))).lower() if len(
+                fc) == 6 else fc[:3].lower()
             msg = msg.replace('&nbsp;', ' ')  # fix
             msg = convertPM(msg)  # TODO No ha sido completamente probado
         else:  # Room
@@ -1147,13 +1159,12 @@ class WSConnection:
         """
         self._rbuf += data  # Agregar los datos al buffer de lectura
         if not self._serverheaders and b'\r\n' * 2 in data:
-            self._serverheaders, self._rbuf = self._rbuf.split(b'\r\n' * 2)
+            self._serverheaders, self._rbuf = self._rbuf.split(b'\r\n' * 2, 1)
             clave = WS.checkHeaders(self._serverheaders)
             if clave != WS.getServerSeckey(self._headers) and debug:
                 if debug:
                     print(
-                            'Un proxy ha enviado una respuesta en caché, puede que no estés conectado a la versión más '
-                            'reciente del servidor',
+                            'Un proxy ha enviado una respuesta en caché',
                             file = sys.stderr)
             self._setWriteLock(False)
             self._login()
@@ -1195,7 +1206,7 @@ class WSConnection:
             self._firstCommand = False
         else:
             terminator = "\r\n\x00"
-        cmd = ":".join(args) + terminator
+        cmd = ":".join(str(x) for x in args) + terminator
         self._write(WS.encode(cmd))
 
     def _setWriteLock(self, lock: bool):
@@ -1557,6 +1568,7 @@ class Room(WSConnection):
         self._currentname = account[0]
         self._maxHistoryLength = Gestor.maxHistoryLength  # Por que no guardar una configuración de esto por sala
         # Datos del chat
+        self._announcement = ''
         self._banlist = dict()  # Lista de usuarios baneados
         self._flags = None
         self._history = deque(maxlen = self._maxHistoryLength)
@@ -1573,7 +1585,7 @@ class Room(WSConnection):
         self._silent = False
         self._time = None
         self._timecorrection = 0
-        self._info = ['', '']
+        self._info = ['', '']  # TODO Title, about
         self._owner = None
         self._unbanlist = dict()
         self._user = None
@@ -2164,6 +2176,15 @@ class Room(WSConnection):
                           str(int(time.time() + self._correctiontime)),
                           'next', '500', 'anons', '1')
 
+    def setAnnouncement(self, anuncio = '', tiempo = 0, activo = True):  # TODO activar o desactivar solamente
+        # TODO regresar true o false con permisos
+        if not anuncio:
+            self._ancqueue = 1
+            self._sendCommand('getannouncement')
+        else:
+            self._sendCommand('updateannouncement', int(activo), tiempo, anuncio)
+        return True
+
     ####################
     # Comandos recibidos
     ####################
@@ -2175,13 +2196,8 @@ class Room(WSConnection):
         pass
 
     def _rcmd_annc(self, args):  # TODO TERMINAR Y LLAMAR AL EVENTO
-        activado = args[0]
-        sala = args[1]
-        raw = args[2]
-        nc = _parseNameColor(raw)
-        fc = _parseFont(raw)
-        msg = _clean_message(raw)[0]
-
+        self._announcement = args
+        self._callEvent('onAnnouncementUpdate', args[0] != '0')  # TODO escribir
 
     def _rcmd_b(self, args):  # TODO reducir  y unificar con rcmd_i
         # TODO el reconocimiento de otros bots en anon está incompleto
@@ -2328,7 +2344,12 @@ class Room(WSConnection):
         pass
 
     def _rcmd_getannc(self, args):  # TODO falta rcmd
-        pass
+        # <class 'list'>: ['3', 'pythonrpg', '5', '60', '<nE20/><f x1100F="1">hola']
+        self._announcement = args[0] + ':'.join(args[3:])
+        if hasattr(self, '_ancqueue'):
+            del self._ancqueue
+            self._announcement = (args[0] == '0' and '3' or '0') + ':'.join(args[3:])
+            self._sendCommand('updateannouncement', args[0] == '0' and '3' or '0', ':'.join(args[3:]))
 
     def _rcmd_g_participants(self, args):
         self._userdict = dict()
@@ -2435,6 +2456,7 @@ class Room(WSConnection):
         """Em el chat es solo para desactivar la animación de espera por conexión"""
         self._sendCommand("g_participants", "start")
         self._sendCommand("getpremium", "l")
+        self._sendCommand('getannouncement')
         self.requestBanlist()
         self.requestUnBanlist()
         if self.attempts == 1:
@@ -3144,7 +3166,12 @@ class Gestor:
         """
         pass
 
-    def onModAdd(self, room, user):  # TODO documentar
+    def onModAdd(self, room, user):
+        """
+        Cuando se agrega un moderador nuevo a la sala
+        @param room: Sala donde ocurre el evento
+        @param user: Usuario que ha sido ascendido a moderador
+        """
         pass
 
     def onModChange(self, room, user, privs):
@@ -3156,9 +3183,20 @@ class Gestor:
         """
         pass
 
-    def onModsChange(self, room, user):  # TODO documentar
+    def onModsChange(self, room, user):
+        """
+        Cuando cambian los permisos de un moderador en la sala
+        @param room: Sala donde ocurre el cambio
+        @param user: Usuario al que se le han cambiado los permisos
+        """
         pass
 
+    def onModRemove(self, room, user):
+        """
+        Cuando se remueve un moderador de la sala
+        @param room: Sala donde ocurre el evento
+        @param user: Usuario que ha perdido su mod
+        """
     def onModRemove(self, room, user):  # TODO documentar
         pass
 
@@ -3185,7 +3223,11 @@ class Gestor:
         pass
 
     def onPMContactApp(self, pm: PM, user: _User):
-        # TODO comentar
+        """
+        Cuando un usuario se desconecta pero cuenta con la APP de chatango
+        @param pm: El PM
+        @param user: El usuario que se ha desconectado
+        """
         pass
 
     def onPMContactOffline(self, pm: PM, user: _User):
@@ -3292,7 +3334,11 @@ class Gestor:
         """
         pass
 
-    def onUnBanlistUpdate(self, room):  # TODO documentar
+    def onUnBanlistUpdate(self, room):
+        """
+        Cuando se actualiza el historial de ban de una sala
+        @param room: Sala donde ocurre el evento
+        """
         pass
 
     def onUpdateInfo(self, room):
@@ -3302,7 +3348,12 @@ class Gestor:
         """
         pass
 
-    def onUpdateProfile(self, room, user):  # TODO documentar
+    def onUpdateProfile(self, room, user):
+        """
+        Cuando un usuario activa su perfil en una sala
+        @param room: Sala donde ocurre el evento
+        @param user: Usuario que actualiza su perfil
+        """
         pass
 
     def onUserCountChange(self, room):
