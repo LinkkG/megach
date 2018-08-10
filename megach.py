@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.2.4
+Version: M1.2.5
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -62,7 +62,7 @@ from urllib.error import HTTPError, URLError
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.2.4'
+version = 'M1.2.5'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -3019,6 +3019,14 @@ class Gestor:
             except Exception as e:
                 print('Task error {}: {}'.format(task.func, e))
                 task.cancel()
+
+    def onAnnouncementUpdate(self, room, active):
+        """
+        Se activa cuando un moderador cambia los anuncios automáticos de la sala
+        @param room: Sala donde ocurre el evento
+        @param active: Bool indicando si el annuncio está activo o no
+        """
+        pass
 
     def onAnonBan(self, room, user, target):
         """
