@@ -2517,8 +2517,8 @@ class Room(WSConnection):
         if args and debug:
             print('New Unhandled arg on inited ', file = sys.stderr)
         # comprobar el tamaño máximo del history y solicitar anteriores hasta llenar
-        if len(self._history) < self._history.maxlen and self._waitingmore > 0:
-            self._sendCommand("get_more:20:" + str(self._waitingmore - 1))  # TODO revisar
+        # if len(self._history) < self._history.maxlen and not self._nomore:
+        #    self._sendCommand("get_more:20:" + str(self._waitingmore - 1))  # TODO revisar
 
     def _rmd_logoutfirst(self, args):  # TODO al intentar iniciar sesión sin haber cerrado otra
         pass
