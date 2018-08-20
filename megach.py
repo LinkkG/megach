@@ -1922,7 +1922,8 @@ class Room(WSConnection):
         TODO cola de mensajes
         Envía un mensaje
         @param msg: (str) Mensaje a enviar(str)
-        @param html: (bool) Si se habilitarán los carácteres html, en caso contrario se reemplazarán los carácteres especiales
+        @param html: (bool) Si se habilitarán los carácteres html, en caso contrario se reemplazarán los carácteres
+        especiales
         @param canal: el número del canal. del 0 al 4 son normal,rojo,azul,azul+rojo,mod
         @param badge: (int) Insignia del mensaje
         """
@@ -2260,7 +2261,7 @@ class Room(WSConnection):
             if debug and (channel & 16 or channel & 32 or channel & 1 or channel & 2):  # TODO para depurar
                 print("ALERTA, valor detectado %s en '%s'" % (channel, rawmsg))
             channel = ((channel & 2048) | (channel & 256)) | (
-                        channel & 35072)  # Se detectan 4 canales y sus combinaciones
+                    channel & 35072)  # Se detectan 4 canales y sus combinaciones
         body, n, f = _clean_message(rawmsg)
         if name == "":
             nameColor = None
@@ -2395,10 +2396,12 @@ class Room(WSConnection):
     def _rcmd_getannc(self, args):  # TODO falta rcmd
         # <class 'list'>: ['3', 'pythonrpg', '5', '60', '<nE20/><f x1100F="1">hola']
         # TODO que significa el tercer elemento?
+        if len(args) < 4 or args[0] != 'none':
+            return
         self._announcement = [int(args[0]), int(args[3]), ':'.join(args[4:])]
         if hasattr(self, '_ancqueue'):
             del self._ancqueue
-            self._announcement[0] = int(args[0]) == 0 and 3 or 0
+            self._announcement[0] = args[0] == '0' and 3 or 0
             self._sendCommand('updateannouncement', args[0] == '0' and '3' or '0', ':'.join(args[3:]))
 
     def _rcmd_g_participants(self, args):
