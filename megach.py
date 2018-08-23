@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: M1.2.6
+Version: 1.3.0
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -29,7 +29,7 @@ Información de contacto:
 ################################################################
 # License
 ################################################################
-# Copyright 2011 Megamaster12
+# Copyright 2018 Megamaster12
 # This program is distributed under the terms of the GNU GPL.
 """
 ################################################################
@@ -40,11 +40,6 @@ from collections import namedtuple, deque
 import hashlib
 import html as html2
 import sys
-
-if sys.version_info[1] < 5:
-    from html.parser import HTMLParser
-
-    html2.unescape = HTMLParser().unescape
 import mimetypes
 import os
 import queue
@@ -59,10 +54,15 @@ import urllib.parse as urlparse
 import urllib.request as urlreq
 from urllib.error import HTTPError, URLError
 
+if sys.version_info[1] < 5:
+    from html.parser import HTMLParser
+
+    html2.unescape = HTMLParser().unescape
+
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.2.6'
+version = 'M1.3.0'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -289,16 +289,29 @@ def _strip_html(msg: str) -> str:
 def _parseFont(f: str, pm = False) -> [str, str, str]:
     """
     Lee el contendido de un etiqueta f y regresa
-    tamaño color y fuente
+    tamaño color y fuente (en ese orden)
     @param f: El texto con la etiqueta f incrustada
     @return: Tamaño, Color, Fuente
+    >>> _parseFont('x404040="7"')
+    ('', '404040', '7')
+    >>> _parseFont('xA40="7"')
+    ('', 'A40', '7')
+    >>> _parseFont('x12A04="arial"')
+    ('12', 'A04', 'arial')
+    >>> _parseFont('x9404040="7"')
+    ('9', '404040', '7')
+    >>> _parseFont('x404040="times new roman"')
+    ('', '404040', 'times new roman')
+    >>> _parseFont('xbadfont="bad"')
+    (None, None, None)
     """
     if pm:
-        matchs = re.findall('x(\d+){0,2}s([0-9a-fA-F]{3,6})=["\'](\d)["\']', f)
+        matchs = re.findall('["\'](.*)["\']=([0-9a-fA-F]{3,6})s(\d{0,2})x', f[::-1])
+        # 'x(\d){0,2}s([0-9a-fA-F]{3,6})=["\'](\d)["\']'
     else:
-        matchs = re.findall('x(\d+){0,2}([0-9a-fA-F]{3,6})=["\'](\d)["\']', f)
+        matchs = re.findall('["\'](.*)["\']=([0-9a-fA-F]{3}|[0-9a-fA-F]{6})(\d{0,2})x', f[::-1])
     if matchs and len(matchs[0]) == 3:
-        return matchs[0]
+        return tuple(x[::-1] for x in matchs[0])[::-1]
     else:
         return None, None, None
 
@@ -695,13 +708,13 @@ class _User:
         """Lista de salas"""
         return [room.name for room in self._sids]
 
-    def _getSessionIds(self, room = None):
+    def getSessionIds(self, room = None):
         if room:
             return self._sids.get(room, set())
         else:
             return set.union(*self._sids.values())
 
-    sessionids = property(_getSessionIds)
+    sessionids = property(getSessionIds)
 
     ####
     # Util
@@ -865,7 +878,9 @@ class Message:
 
     @property
     def uid(self):
-        """Id del usuario del mensaje TODO """
+        """Id del usuario del mensaje
+        TODO comprobar significado y utilidad
+        """
         return self._puid
 
     @property
@@ -1269,8 +1284,8 @@ class PM(WSConnection):
         self._contacts = set()
         self._name = 'PM'
         self._currentname = name
-        # self._origin='st.chatango.com'
-        self._port = 8080  # TODO
+        # TODO cuando la conexión a un puerto falla, se puede aumentar en uno hasta cierto límte
+        self._port = 8080
         self._server = 'c1.chatango.com'
         # self._server = 'i0.chatango.com'  # TODO
         self._status = dict()
@@ -1493,10 +1508,6 @@ class PM(WSConnection):
     def _rcmd_seller_name(self, args):  # TODO completar
         pass
 
-    def _rcmd_show_fw(self, args):
-        """Comando sin argumentos que manda una advertencia de flood en una sala"""
-        self._callEvent('onFloodWarning')
-
     def _rcmd_status(self, args):  # TODO completar
 
         # status:linkkg:1531458009.39:online:
@@ -1504,6 +1515,7 @@ class PM(WSConnection):
         pass
 
     def _rcmd_track(self, args):  # TODO completar
+        # print("track "+str(args))
         pass
 
     def _rcmd_time(self, args):
@@ -1624,16 +1636,16 @@ class Room(WSConnection):
     @property
     def allshownames(self):
         """Todos los nombres de usuarios en la sala, incluyendo anons"""
-        return [x.showname for x in sorted(self.alluserlist, key = lambda x: x.name)]
+        return [x.showname for x in self.alluserlist]
 
     @property
     def alluserlist(self):
         """Lista de todos los usuarios en la sala, incluyendo anons"""
-        return list(x[1] for x in self._userdict.values())
+        return sorted(list(x[1] for x in self._userdict.values()), key = lambda x: x.name.lower())
 
     @property
     def allusernames(self):
-        return sorted(set([x.name for x in self.alluserlist]))
+        return [x.name for x in self.alluserlist]
 
     @property
     def badge(self):
@@ -1678,6 +1690,10 @@ class Room(WSConnection):
     @flags.setter  # TODO ajustarlo para cambiar la sala
     def flags(self, value):
         self._flags = value
+
+    @property
+    def history(self):
+        return list(self._history)
 
     @property
     def info(self):
@@ -1725,9 +1741,7 @@ class Room(WSConnection):
         """
         return self._silent
 
-    @property
-    def shownames(self):
-        return sorted(list(set([x.showname for x in self.userlist])), key = lambda s: s.lower())
+
 
     @property
     def unbanlist(self):
@@ -1739,10 +1753,14 @@ class Room(WSConnection):
         return self._user
 
     @property
+    def shownames(self):
+        return list(set([x.showname for x in self.userlist]))
+
+    @property
     def userlist(self):
         """Lista de usuarios en la sala, por defecto muestra todos los usuarios (no anons) sin incluir sesiones
         extras"""
-        return self._getUserlist(1, 1)
+        return self._getUserlist()
 
     @property
     def alluserCount(self):
@@ -1759,12 +1777,24 @@ class Room(WSConnection):
     @property
     def usernames(self):
         """Nombres de usuarios en la sala. Por defecto usado los valores de userlist"""
-        return sorted(list(set([x.name for x in self.userlist])))
+        return [x.name for x in self.userlist]
 
     @property
     def userhistory(self):
         # TODO regresar solo la ultima sesión para cada usuario
         return self._userhistory
+
+    def getSessionlist(self, mode = 0, memory = 0):
+        """
+        Regresa la lista de usuarios y su cantidad de sesiones en la sala
+        @param mode: Modo 1 (User,int), 2 (name,int) 3 (showname,int)
+        @param memory: int Mensajes que se verán si se revisará el historial
+        @return: list[tuple,tuple,...]
+        """
+        if mode < 2:
+            return [(x.name if mode else x, len(x.getSessionIds(self))) for x in self._getUserlist(1, memory)]
+        else:
+            return [(x.showname, len(x.getSessionIds(self))) for x in self._getUserlist(1, memory, anons)]
 
     def _addHistory(self, msg):
         """
@@ -1776,16 +1806,22 @@ class Room(WSConnection):
             rest.detach()
         self._history.append(msg)
 
-    def _getUserlist(self, todos = 0, unica = 0, memoria = 0):  # TODO Revisar
-        ul = None  # TODO Si hay flag de usuarios invisibles usar el history
-        if not todos:
-            ul = map(lambda x: x.user,
-                     self._history[-memoria:])  # TODO memoria no debe ser mayor a la cantidad de elementos
-        else:
-            ul = list(set([x[1] for x in self._userdict.values() if not x[1].isanon]))
-        if unica:
-            return list(set(ul))
-        return ul
+    def _getUserlist(self, unique = True, memory = 0, anons = False):  # TODO Revisar
+        """
+        Regresa una lista con los nombres de usuarios en la sala
+        @param unique: bool indicando si la lista es única
+        @param memory: int indicando que tan atrás se verá en el historial de mensajes
+        @param anons: bool indicando si se regresarán anons entre los usuarios
+        @return: list
+        """
+        ul = []
+        if not memory:
+            ul = [x[1] for x in self._userdict.values() if anons or not x[1].isanon]
+        elif type(memory) == int:
+            ul = set(map(lambda x: x.user, list(self._history)[min(-memory, len(self._history)):]))
+        if unique:
+            ul = set(ul)
+        return sorted(list(ul), key = lambda x: x.name.lower())
 
     ####################
     # Comandos de la sala
@@ -1818,7 +1854,7 @@ class Room(WSConnection):
         @return: Bool indicando si se envió el comando
         """
         msg = self.getLastMessage(user)
-        if msg:
+        if msg and msg.user not in self.banlist:
             return self.banMessage(msg)
         return False
 
@@ -1966,7 +2002,12 @@ class Room(WSConnection):
         if self.connected:
             self._sendCommand('msgmedia', str(self._recording))
 
-    def setSilent(self, silent):  # TODO
+    def setSilent(self, silent = True):
+        """
+        Silencia al bot en una sala
+        @param silent: bool indica si activar o desactivar el silencio
+        @return:
+        """
         self._silent = silent
 
     def unbanUser(self, user):
@@ -2246,7 +2287,7 @@ class Room(WSConnection):
         unid = args[4]  # TODO Id del mensaje?
         msgnum = args[5]  # Número del mensaje Si no está no se debe procesar
         ip = args[6]  # Ip del usuario
-        channel = args[7] or 0  # TODO se puede saber el premium con esto premium=4 bg=(8 y premium)
+        channel = args[7] or 0
         unknown2 = args[8]  # TODO examinar este dato
         rawmsg = ':'.join(args[9:])
         badge = 0
@@ -2259,7 +2300,8 @@ class Room(WSConnection):
             ispremium = channel & 4 > 0
             hasbg = channel & 8 > 0
             if debug and (channel & 16 or channel & 32 or channel & 1 or channel & 2):  # TODO para depurar
-                print("ALERTA, valor detectado %s en '%s'" % (channel, rawmsg))
+                print("ALERTA, valor detectado %s en '%s'. Favor informar a MegaMaster12" % (channel, args),
+                      file = sys.stderr)
             channel = ((channel & 2048) | (channel & 256)) | (
                     channel & 35072)  # Se detectan 4 canales y sus combinaciones
         body, n, f = _clean_message(rawmsg)
@@ -2396,7 +2438,7 @@ class Room(WSConnection):
     def _rcmd_getannc(self, args):  # TODO falta rcmd
         # <class 'list'>: ['3', 'pythonrpg', '5', '60', '<nE20/><f x1100F="1">hola']
         # TODO que significa el tercer elemento?
-        if len(args) < 4 or args[0] != 'none':
+        if len(args) < 4 or args[0] == 'none':
             return
         self._announcement = [int(args[0]), int(args[3]), ':'.join(args[4:])]
         if hasattr(self, '_ancqueue'):
@@ -2506,7 +2548,7 @@ class Room(WSConnection):
 
     def _rcmd_inited(self, args):  # TODO
         """Em el chat es solo para desactivar la animación de espera por conexión"""
-        self._sendCommand("g_participants", "start")
+        self._sendCommand("gparticipants")
         self._sendCommand("getpremium", "l")
         self._sendCommand('getannouncement')
         self.requestBanlist()
@@ -2656,9 +2698,13 @@ class Room(WSConnection):
             user.addPersonalUserId(self, puid)
             self._userdict[ssid] = [contime, user]
 
-    def _rcmd_pwdok(self, args):
+    def _rcmd_pwdok(self, args = None):
         """Login correcto"""
         self._user = User(self._currentname)
+
+    def _rcmd_show_fw(self, args = None):
+        """Comando sin argumentos que manda una advertencia de flood en una sala"""
+        self._callEvent('onFloodWarning')
 
     def _rcmd_show_tb(self, args):  # TODO documentar
         self._callEvent("onFloodBan", int(args[0]))
