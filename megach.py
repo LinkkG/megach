@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: 1.3.0
+Version: 1.3.1
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -62,7 +62,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.3.0'
+version = 'M1.3.1'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -516,7 +516,7 @@ class WS:
             headers = headers.splitlines()
         if isinstance(headers, list):  # Convertirlo en diccionario e ignorar los valores incorrectos
             headers = map((lambda x: x.split(':', 1) if len(x.split(':')) > 1 else ('', '')), headers)
-            headers = {z.lower().strip(): y.lower().strip() for z, y in headers if z and y}
+            headers = {z.lower().strip(): y.strip() for z, y in headers if z and y}
         return headers
 
     @staticmethod
@@ -540,7 +540,7 @@ class WS:
         return payload
 
     @staticmethod
-    def getServerSeckey(headers: bytes, key: bytes = 'b') -> str:
+    def getServerSeckey(headers: bytes, key: bytes = b'') -> str:
         """
         Calcula la respuesta que debe dar el servidor según la clave de seguridad que se le envió
         @param headers: Los valores enviados al servidor. Si se recibe, se ignorará el parámetro key
@@ -1189,7 +1189,8 @@ class WSConnection:
         if not self._serverheaders and b'\r\n' * 2 in data:
             self._serverheaders, self._rbuf = self._rbuf.split(b'\r\n' * 2, 1)
             clave = WS.checkHeaders(self._serverheaders)
-            if clave != WS.getServerSeckey(self._headers) and debug:
+            esperada = WS.getServerSeckey(self._headers)
+            if clave != esperada and debug:
                 if debug:
                     print(
                             'Un proxy ha enviado una respuesta en caché',
