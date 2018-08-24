@@ -6,7 +6,7 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
-Version: 1.3.1
+Version: 1.3.2
 Description:
     Una librería para conectarse múltiples salas de Chatango
     Basada en las siguientes fuentes
@@ -62,7 +62,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.3.1'
+version = 'M1.3.2'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1795,7 +1795,7 @@ class Room(WSConnection):
         if mode < 2:
             return [(x.name if mode else x, len(x.getSessionIds(self))) for x in self._getUserlist(1, memory)]
         else:
-            return [(x.showname, len(x.getSessionIds(self))) for x in self._getUserlist(1, memory, anons)]
+            return [(x.showname, len(x.getSessionIds(self))) for x in self._getUserlist(1, memory)]
 
     def _addHistory(self, msg):
         """
@@ -2556,10 +2556,8 @@ class Room(WSConnection):
         self.requestUnBanlist()
         if self.attempts == 1:
             self._callEvent("onConnect")
-            # TODO
         else:
             self._callEvent("onReconnect")
-            # TODO
         if args and debug:
             print('New Unhandled arg on inited ', file = sys.stderr)
         # comprobar el tamaño máximo del history y solicitar anteriores hasta llenar
