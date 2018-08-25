@@ -592,7 +592,7 @@ class User:
     Clase que representa a un usuario de chatango
     Iniciarlo sin el guion bajo para evitar inconvenientes
     """
-    _users = []
+    _users = {}
     def __new__(cls, name, **kwargs):
         if name is None:
             name = ""
