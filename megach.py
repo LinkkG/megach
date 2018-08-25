@@ -91,8 +91,6 @@ tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
              ["82", sv12], ["83", sv12], ["84", sv12]]
 _maxServernum = sum(map(lambda x: x[1], tsweights))
 
-_users = dict()
-
 GroupFlags = {
     "LIST_TAXONOMY":     1,
     "NOANONS":           4, "NOFLAGGING": 8, "NOCOUNTER": 16, "NOIMAGES": 32, "NOLINKS": 64, "NOVIDEOS": 128,
@@ -589,47 +587,21 @@ class WS:
         except Exception as e:
             raise  # TODO no controlada
 
-
-def User(name: str, **kwargs):
-    """
-    Un def que representa a la clase _User. Si el usuario ya existe, mejor regresa ese
-    y en caso de que no, lo crea y lo agrega a la lista
-    @param name: Nombre del usuario
-    @param kwargs: Datos que contendrá el usuario
-    @return: Usuario nuevo o encontrado en la lista
-    """
-    if name is None:
-        name = ""
-    user = _users.get(name.lower())
-
-    if not user:
-        user = _User(name = name, **kwargs)
-        _users[name.lower()] = user
-    return user
-
-
-class _User:
+class User:
     """
     Clase que representa a un usuario de chatango
     Iniciarlo sin el guion bajo para evitar inconvenientes
     """
+    _users = {}
+    def __new__(cls, name, **kwargs):
+        if name is None:
+            name = ""
+        name = name.lower()
+        if name in cls._users:
+            return cls._users[name]
+        self = super().__new__(cls)
+        cls._users[name] = self
 
-    def __dir__(self):
-        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
-
-    def __radd__(self, other):
-        return str(other) + self.showname
-
-    def __add__(self, other):
-        return self.showname + str(other)
-
-    def __str__(self):
-        return self.showname
-
-    def __repr__(self):
-        return "<User: %s>" % self.name
-
-    def __init__(self, name, **kwargs):
         self._fontColor = '0'
         self._fontFace = '0'
         self._fontSize = 12
@@ -648,6 +620,22 @@ class _User:
                 continue
             setattr(self, '_' + attr, val)
         # TODO Más cosas del user
+        return self
+
+    def __dir__(self):
+        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
+
+    def __radd__(self, other):
+        return str(other) + self.showname
+
+    def __add__(self, other):
+        return self.showname + str(other)
+
+    def __str__(self):
+        return self.showname
+
+    def __repr__(self):
+        return "<User: %s>" % self.name
 
     # Propiedades
     @property
@@ -888,7 +876,7 @@ class Message:
         return self._unid
 
     @property
-    def user(self) -> _User:
+    def user(self) -> User:
         """El usuario del mensaje"""
         return self._user
 
@@ -1030,7 +1018,7 @@ class WSConnection:
         return time.time() + self._correctiontime
 
     @property
-    def user(self) -> _User:
+    def user(self) -> User:
         """El usuario de esta conexión"""
         return self._user
 
@@ -1409,7 +1397,7 @@ class PM(WSConnection):
         @param msg: Mensaje que se envia (string)
         """
         if msg:
-            if isinstance(user, _User):  # TODO externalizar
+            if isinstance(user, User):  # TODO externalizar
                 user = user.name
             msg = self._messageFormat(str(msg), html)
             for unimsg in msg:
@@ -1835,7 +1823,7 @@ class Room(WSConnection):
         @param powers: Poderes del usuario mod, un string con números
         @return: bool indicando si se hará o no
         """
-        if isinstance(user, _User):
+        if isinstance(user, User):
             user = user.name
         if self.user == self.owner or (self.user in self.mods and self.modflags.get(self.user.name).EDIT_MODS):
             self._sendCommand('addmod:{}:{}'.format(user, powers))
@@ -1852,7 +1840,7 @@ class Room(WSConnection):
     def banUser(self, user: str) -> bool:
         """
         Banear un usuario (si se tiene el privilegio)
-        @param user: El usuario, str o _User
+        @param user: El usuario, str o User
         @return: Bool indicando si se envió el comando
         """
         msg = self.getLastMessage(user)
@@ -1892,7 +1880,7 @@ class Room(WSConnection):
 
     def findUser(self, name):
         # TODO, capacidad para recibir un User
-        if isinstance(name, _User):
+        if isinstance(name, User):
             name = name.name
         if name.lower() in self.allusernames:
             return User(name)
@@ -1987,7 +1975,7 @@ class Room(WSConnection):
             self._sendCommand("bm", "meme", msg)
 
     def removeMod(self, user):
-        if isinstance(user, _User):
+        if isinstance(user, User):
             user = user.name
         self._sendCommand('removemod', user)
 
@@ -2062,7 +2050,7 @@ class Room(WSConnection):
         @return:
         """
         # TODO comprobar si el usuario del bot tiene los privilegios
-        if isinstance(user, _User):  # TODO externalizar
+        if isinstance(user, User):  # TODO externalizar
             user = user.name
 
         if user not in self.modflags or (self.user not in self.mods and self.user != self.owner):
@@ -2209,7 +2197,7 @@ class Room(WSConnection):
     # Utilería del bot
     ####################
     def banRecord(self, user):
-        if isinstance(user, _User):  # TODO externalizar
+        if isinstance(user, User):  # TODO externalizar
             user = user.name
         if user.lower() in [x.name for x in self._banlist]:
             return self._banlist[User(user)]
@@ -2916,7 +2904,7 @@ class Gestor:
             self.mgr.removeTask(self)
 
     def findUser(self, name):
-        if isinstance(name, _User):  # TODO externalizar
+        if isinstance(name, User):  # TODO externalizar
             name = name.name
         return [x.name for x in self._rooms.values() if x.findUser(name)]
 
@@ -3267,11 +3255,11 @@ class Gestor:
     def onLogout(self, room, user, ssid):
         pass
 
-    def onMessage(self, room: Room, user: _User, message: Message):
+    def onMessage(self, room: Room, user: User, message: Message):
         """
         Al recibir un mensaje en una sala
         @param room: Sala en la que se ha recibido el mensaje
-        @param user: Usuario que ha enviado (_User)
+        @param user: Usuario que ha enviado (User)
         @param message: El mensaje enviado (Message)
         @return:
         """
@@ -3340,7 +3328,7 @@ class Gestor:
         """
         pass
 
-    def onPMContactApp(self, pm: PM, user: _User):
+    def onPMContactApp(self, pm: PM, user: User):
         """
         Cuando un usuario se desconecta pero cuenta con la APP de chatango
         @param pm: El PM
@@ -3348,7 +3336,7 @@ class Gestor:
         """
         pass
 
-    def onPMContactOffline(self, pm: PM, user: _User):
+    def onPMContactOffline(self, pm: PM, user: User):
         """
         Cuando un contacto se desconecta del pm
         @param pm: El PM
