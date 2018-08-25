@@ -449,7 +449,7 @@ class WS:
             return s.replace('"', '\\"')
 
         if boundary is None:
-            boundary = ''.join(random.choices(WS._BOUNDARY_CHARS, k = 30))
+            boundary = ''.join(random.choice(WS._BOUNDARY_CHARS) for x in range(30))
         lineas = []
         for nombre, valor in data.items():
             lineas.extend(('--%s' % boundary,
@@ -1579,7 +1579,7 @@ class Room(WSConnection):
     Base para manejar las conexiones con las salas. Hereda de WSConnection y tiene todas
     sus propiedades
     """
-
+    _BANDATA = namedtuple('BanData', ['unid', 'ip', 'target', 'time', 'src'])
     def __dir__(self):
         return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
 
@@ -1603,7 +1603,7 @@ class Room(WSConnection):
         self._msgs = dict()  # TODO esto y history es lo mismo?
         self._name = name
         self._nameColor = ''
-        self._port = 1800  # TODO
+        self._port = 8080  # TODO
         self._rbuf = b''
         self._server = getServer(name)  # TODO
         self._connectiontime = 0
@@ -1614,6 +1614,7 @@ class Room(WSConnection):
         self._info = ['', '']  # TODO Title, about
         self._owner = None
         self._unbanlist = dict()
+        self._unbanqueue = deque(maxlen = 500)
         self._user = None
         self._users = deque()  # TODO reemplazar userlist con userdict y userhistory
         self._userdict = dict()  # TODO {ssid:{user},}
@@ -1746,7 +1747,7 @@ class Room(WSConnection):
 
     @property
     def unbanlist(self):
-        return list(self._unbanlist.keys())
+        return list(set(x.target.name for x in self._unbanqueue))
 
     @property
     def user(self):
@@ -2732,38 +2733,47 @@ class Room(WSConnection):
         self._ubw = args
         pass
 
-    def _rcmd_unblocked(self, args):  # TODO
-        args = ":".join(args).split(";")[-1].split(":")  # TODO checar
-        user = User(args[3])
-        target = args[2]
-        if target == "":
-            msx = [msg for msg in self._history if msg.unid == args[0]]
-            if msx:
-                target = msx[0].user
-            self._callEvent('onAnonUnban', user, target)
+    def _rcmd_unblocked(self, args):
+        """Se ha quitado el ban a un usuario"""
+        unid = args[0]
+        ip = args[1]
+        target = args[2].split(';')[0]
+        # TODO verificar que otra accion se puede hacer con un ban multiple
+        # args[3:-3] if len(args)>5
+        bnsrc = args[-3]  # TODO utilidad del bnsrc (el que banea)
+        ubsrc = User(args[-2])
+        time = args[-1]
+        self._unbanqueue.append(self._BANDATA(unid, ip, target, float(time), ubsrc))
+        # args = ":".join(args).split(";")[-1].split(":")
+        if target == '':
+            # Si el baneado era anon, intentar otbener su nombre
+            msx = [msg for msg in self._history if msg.unid == unid]
+            target = msx and msx[0].user or User('anon')
+            self._callEvent('onAnonUnban', ubsrc, target)
         else:
-            target = User(args[2])
-            del self._banlist[target]
-            self._callEvent("onUnban", user, target)
-        self._unbanlist[user] = {"unid": args[0], "ip": args[1], "target": target, "time": float(args[4]), "src": user}
+            if target in self._banlist:
+                self._banlist.pop(target)
+            target = User(target)
+            self._callEvent("onUnban", ubsrc, target)
 
-    def _rcmd_unblocklist(self, args):  # TODO
-        self._unbanlist = dict()
+    def _rcmd_unblocklist(self, args):
         sections = ":".join(args).split(";")
-        for section in sections:
+        for section in sections[::-1]:
             params = section.split(":")
             if len(params) != 5:
                 continue
-            if params[2] == "":
-                continue
-            user = User(params[2] or 'Anon')
-            self._unbanlist[user] = {
-                "unid":   params[0],
-                "ip":     params[1],
-                "target": user,
-                "time":   float(params[3]),
-                "src":    User(params[4])
-                }
+            unid = params[0]
+            ip = params[1]
+            target = User(params[2] or 'Anon')
+            time = float(params[3])
+            src = User(params[4])
+            self._unbanqueue.append(
+                    self._BANDATA(unid,
+                                  ip,
+                                  target,
+                                  time,
+                                  src)
+                    )
         self._callEvent("onUnBanlistUpdate")
 
     def _rcmd_updatemoderr(self, args):
@@ -2807,6 +2817,7 @@ class Gestor:
         self._user = User(self._name)
         self._tasks = set()
         self._pm = None
+        self._badconns = queue.Queue()
         self.bgmode = False
         if pm:
             self._pm = PM(mgr = self, name = self.name, password = self.password)
