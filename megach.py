@@ -91,8 +91,6 @@ tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
              ["82", sv12], ["83", sv12], ["84", sv12]]
 _maxServernum = sum(map(lambda x: x[1], tsweights))
 
-_users = dict()
-
 GroupFlags = {
     "LIST_TAXONOMY":     1,
     "NOANONS":           4, "NOFLAGGING": 8, "NOCOUNTER": 16, "NOIMAGES": 32, "NOLINKS": 64, "NOVIDEOS": 128,
@@ -589,47 +587,21 @@ class WS:
         except Exception as e:
             raise  # TODO no controlada
 
-
-def User(name: str, **kwargs):
-    """
-    Un def que representa a la clase _User. Si el usuario ya existe, mejor regresa ese
-    y en caso de que no, lo crea y lo agrega a la lista
-    @param name: Nombre del usuario
-    @param kwargs: Datos que contendrá el usuario
-    @return: Usuario nuevo o encontrado en la lista
-    """
-    if name is None:
-        name = ""
-    user = _users.get(name.lower())
-
-    if not user:
-        user = _User(name = name, **kwargs)
-        _users[name.lower()] = user
-    return user
-
-
-class _User:
+class User:
     """
     Clase que representa a un usuario de chatango
     Iniciarlo sin el guion bajo para evitar inconvenientes
     """
+    _users = []
+    def __new__(cls, name, **kwargs):
+        if name is None:
+            name = ""
+        name = name.lower()
+        if name in cls._users:
+            return cls._users[name]
+        self = super().__new__(cls)
+        cls._users[name] = self
 
-    def __dir__(self):
-        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
-
-    def __radd__(self, other):
-        return str(other) + self.showname
-
-    def __add__(self, other):
-        return self.showname + str(other)
-
-    def __str__(self):
-        return self.showname
-
-    def __repr__(self):
-        return "<User: %s>" % self.name
-
-    def __init__(self, name, **kwargs):
         self._fontColor = '0'
         self._fontFace = '0'
         self._fontSize = 12
@@ -648,6 +620,22 @@ class _User:
                 continue
             setattr(self, '_' + attr, val)
         # TODO Más cosas del user
+        return self
+
+    def __dir__(self):
+        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
+
+    def __radd__(self, other):
+        return str(other) + self.showname
+
+    def __add__(self, other):
+        return self.showname + str(other)
+
+    def __str__(self):
+        return self.showname
+
+    def __repr__(self):
+        return "<User: %s>" % self.name
 
     # Propiedades
     @property
