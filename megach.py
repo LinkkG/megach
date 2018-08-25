@@ -876,7 +876,7 @@ class Message:
         return self._unid
 
     @property
-    def user(self) -> _User:
+    def user(self) -> User:
         """El usuario del mensaje"""
         return self._user
 
@@ -1018,7 +1018,7 @@ class WSConnection:
         return time.time() + self._correctiontime
 
     @property
-    def user(self) -> _User:
+    def user(self) -> User:
         """El usuario de esta conexión"""
         return self._user
 
@@ -1397,7 +1397,7 @@ class PM(WSConnection):
         @param msg: Mensaje que se envia (string)
         """
         if msg:
-            if isinstance(user, _User):  # TODO externalizar
+            if isinstance(user, User):  # TODO externalizar
                 user = user.name
             msg = self._messageFormat(str(msg), html)
             for unimsg in msg:
@@ -1822,7 +1822,7 @@ class Room(WSConnection):
         @param powers: Poderes del usuario mod, un string con números
         @return: bool indicando si se hará o no
         """
-        if isinstance(user, _User):
+        if isinstance(user, User):
             user = user.name
         if self.user == self.owner or (self.user in self.mods and self.modflags.get(self.user.name).EDIT_MODS):
             self._sendCommand('addmod:{}:{}'.format(user, powers))
@@ -1839,7 +1839,7 @@ class Room(WSConnection):
     def banUser(self, user: str) -> bool:
         """
         Banear un usuario (si se tiene el privilegio)
-        @param user: El usuario, str o _User
+        @param user: El usuario, str o User
         @return: Bool indicando si se envió el comando
         """
         msg = self.getLastMessage(user)
@@ -1879,7 +1879,7 @@ class Room(WSConnection):
 
     def findUser(self, name):
         # TODO, capacidad para recibir un User
-        if isinstance(name, _User):
+        if isinstance(name, User):
             name = name.name
         if name.lower() in self.allusernames:
             return User(name)
@@ -1974,7 +1974,7 @@ class Room(WSConnection):
             self._sendCommand("bm", "meme", msg)
 
     def removeMod(self, user):
-        if isinstance(user, _User):
+        if isinstance(user, User):
             user = user.name
         self._sendCommand('removemod', user)
 
@@ -2049,7 +2049,7 @@ class Room(WSConnection):
         @return:
         """
         # TODO comprobar si el usuario del bot tiene los privilegios
-        if isinstance(user, _User):  # TODO externalizar
+        if isinstance(user, User):  # TODO externalizar
             user = user.name
 
         if user not in self.modflags or (self.user not in self.mods and self.user != self.owner):
@@ -2196,7 +2196,7 @@ class Room(WSConnection):
     # Utilería del bot
     ####################
     def banRecord(self, user):
-        if isinstance(user, _User):  # TODO externalizar
+        if isinstance(user, User):  # TODO externalizar
             user = user.name
         if user.lower() in [x.name for x in self._banlist]:
             return self._banlist[User(user)]
@@ -2895,7 +2895,7 @@ class Gestor:
             self.mgr.removeTask(self)
 
     def findUser(self, name):
-        if isinstance(name, _User):  # TODO externalizar
+        if isinstance(name, User):  # TODO externalizar
             name = name.name
         return [x.name for x in self._rooms.values() if x.findUser(name)]
 
@@ -3246,11 +3246,11 @@ class Gestor:
     def onLogout(self, room, user, ssid):
         pass
 
-    def onMessage(self, room: Room, user: _User, message: Message):
+    def onMessage(self, room: Room, user: User, message: Message):
         """
         Al recibir un mensaje en una sala
         @param room: Sala en la que se ha recibido el mensaje
-        @param user: Usuario que ha enviado (_User)
+        @param user: Usuario que ha enviado (User)
         @param message: El mensaje enviado (Message)
         @return:
         """
@@ -3319,7 +3319,7 @@ class Gestor:
         """
         pass
 
-    def onPMContactApp(self, pm: PM, user: _User):
+    def onPMContactApp(self, pm: PM, user: User):
         """
         Cuando un usuario se desconecta pero cuenta con la APP de chatango
         @param pm: El PM
@@ -3327,7 +3327,7 @@ class Gestor:
         """
         pass
 
-    def onPMContactOffline(self, pm: PM, user: _User):
+    def onPMContactOffline(self, pm: PM, user: User):
         """
         Cuando un contacto se desconecta del pm
         @param pm: El PM
