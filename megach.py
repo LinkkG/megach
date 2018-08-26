@@ -1248,6 +1248,10 @@ class WSConnection:
         if self._bgmode and (args[0] == '210' or (isinstance(self, Room) and self._owner == self.user)):
             self._sendCommand('msgbg', str(self._bgmode))
 
+    def _rcmd_show_fw(self, args = None):
+        """Comando sin argumentos que manda una advertencia de flood en sala/pm"""
+        self._callEvent('onFloodWarning')
+
 
 class PM(WSConnection):
     """
@@ -2431,6 +2435,8 @@ class Room(WSConnection):
     def _rcmd_g_participants(self, args):
         self._userdict = dict()
         args = ':'.join(args).split(";")
+        if not args or not args[0]:
+            return  # Fix
         for data in args:
             data = data.split(':')  # Lista de un solo usuario
             ssid = data[0]  # Id de la sesión
@@ -2453,7 +2459,7 @@ class Room(WSConnection):
 
     def _rcmd_gparticipants(self, args):
         """Comando viejo de chatango, ya no se usa, pero aún puede seguirlo enviando"""
-        self._rcmd_g_participants(args[1:])
+        self._rcmd_g_participants(len(args) > 1 and args[1:] or '')
 
     def _rcmd_getpremium(self, args):
         # TODO
@@ -2681,10 +2687,6 @@ class Room(WSConnection):
     def _rcmd_pwdok(self, args = None):
         """Login correcto"""
         self._user = User(self._currentname)
-
-    def _rcmd_show_fw(self, args = None):
-        """Comando sin argumentos que manda una advertencia de flood en una sala"""
-        self._callEvent('onFloodWarning')
 
     def _rcmd_show_tb(self, args):  # TODO documentar
         self._callEvent("onFloodBan", int(args[0]))
