@@ -6,31 +6,8 @@ Title: Librería de chatango
 Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
+    TheClonerx
 Version: 1.3.2
-Description:
-    Una librería para conectarse múltiples salas de Chatango
-    Basada en las siguientes fuentes
-        original chatango flash code
-        cherry.py          https://github.com/Sweets/Cherry-Blossom
-        ch.py              https://github.com/Nullspeaker/ch.py
-        ch.py and _ws.py   https://github.com/TheClonerx/chatango-bot
-    Tiene soporte para varias cosas, incluyendo:
-        envío de mensajes,
-        cambio de fuentes y colores,
-        detección de eventos
-        baneos
-        marcadores
-Información de contacto:
-    Cualquier duda, comentario o sugerencia puedes buscarme en chatango y contactarme.
-    Sería genial si incluyeras lo siguiente en tu mensaje:
-        # Tu usuario y tu bot (opcional)
-        # Linea de este archivo, nombre del método o sección de la que hablas
-        # Descripción de tu problema o solicitud
-################################################################
-# License
-################################################################
-# Copyright 2018 Megamaster12
-# This program is distributed under the terms of the GNU GPL.
 """
 ################################################################
 # Imports
@@ -75,65 +52,81 @@ sv6 = 104
 sv8 = 101
 sv10 = 110
 sv12 = 116
-tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
-             ["17", w12], ["18", w12], ["9", sv2], ["11", sv2], ["12", sv2],
-             ["13", sv2], ["14", sv2], ["15", sv2], ["19", sv4], ["23", sv4],
-             ["24", sv4], ["25", sv4], ["26", sv4], ["28", sv6], ["29", sv6],
-             ["30", sv6], ["31", sv6], ["32", sv6], ["33", sv6], ["35", sv8],
-             ["36", sv8], ["37", sv8], ["38", sv8], ["39", sv8], ["40", sv8],
-             ["41", sv8], ["42", sv8], ["43", sv8], ["44", sv8], ["45", sv8],
-             ["46", sv8], ["47", sv8], ["48", sv8], ["49", sv8], ["50", sv8],
-             ["52", sv10], ["53", sv10], ["55", sv10], ["57", sv10], ["58", sv10],
-             ["59", sv10], ["60", sv10], ["61", sv10], ["62", sv10], ["63", sv10],
-             ["64", sv10], ["65", sv10], ["66", sv10], ["68", sv2], ["71", sv12],
-             ["72", sv12], ["73", sv12], ["74", sv12], ["75", sv12], ["76", sv12],
-             ["77", sv12], ["78", sv12], ["79", sv12], ["80", sv12], ["81", sv12],
-             ["82", sv12], ["83", sv12], ["84", sv12]]
-_maxServernum = sum(map(lambda x: x[1], tsweights))
+tsweights = [
+    ['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
+    ["17", w12], ["18", w12], ["9", sv2], ["11", sv2], ["12", sv2],
+    ["13", sv2], ["14", sv2], ["15", sv2], ["19", sv4], ["23", sv4],
+    ["24", sv4], ["25", sv4], ["26", sv4], ["28", sv6], ["29", sv6],
+    ["30", sv6], ["31", sv6], ["32", sv6], ["33", sv6], ["35", sv8],
+    ["36", sv8], ["37", sv8], ["38", sv8], ["39", sv8], ["40", sv8],
+    ["41", sv8], ["42", sv8], ["43", sv8], ["44", sv8], ["45", sv8],
+    ["46", sv8], ["47", sv8], ["48", sv8], ["49", sv8], ["50", sv8],
+    ["52", sv10], ["53", sv10], ["55", sv10], ["57", sv10], ["58", sv10],
+    ["59", sv10], ["60", sv10], ["61", sv10], ["62", sv10], ["63", sv10],
+    ["64", sv10], ["65", sv10], ["66", sv10], ["68", sv2], ["71", sv12],
+    ["72", sv12], ["73", sv12], ["74", sv12], ["75", sv12], ["76", sv12],
+    ["77", sv12], ["78", sv12], ["79", sv12], ["80", sv12], ["81", sv12],
+    ["82", sv12], ["83", sv12], ["84", sv12]
+]
+_maxServernum = sum(x[1] for x in tsweights)
 
 GroupFlags = {
-    "LIST_TAXONOMY":     1,
-    "NOANONS":           4, "NOFLAGGING": 8, "NOCOUNTER": 16, "NOIMAGES": 32, "NOLINKS": 64, "NOVIDEOS": 128,
-    "NOSTYLEDTEXT":      256, "NOLINKSCHATANGO": 512, "NOBRDCASTMSGWITHBW": 1024, "RATELIMITREGIMEON": 2048,
-    "CHANNELSDISABLED":  8192, "NLP_SINGLEMSG": 16384, "NLP_MSGQUEUE": 32768, "BROADCAST_MODE": 65536,
-    "CLOSED_IF_NO_MODS": 131072, "IS_CLOSED": 262144, "SHOW_MOD_ICONS": 524288, "MODS_CHOOSE_VISIBLITY": 1048576,
-    "HAS_XML":           268435456, "UNSAFE": 536870912
-    }
+    "LIST_TAXONOMY":         1,       "NOANONS": 4,
+    "NOFLAGGING":            8,       "NOCOUNTER": 16,
+    "NOIMAGES":              32,      "NOLINKS": 64,
+    "NOVIDEOS":              128,     "NOSTYLEDTEXT": 256,
+    "NOLINKSCHATANGO":       512,     "NOBRDCASTMSGWITHBW": 1024,
+    "RATELIMITREGIMEON":     2048,    "CHANNELSDISABLED": 8192,
+    "NLP_SINGLEMSG":         16384,   "NLP_MSGQUEUE": 32768,
+    "BROADCAST_MODE":        65536,   "CLOSED_IF_NO_MODS": 131072,
+    "IS_CLOSED":             262144,  "SHOW_MOD_ICONS": 524288,
+    "MODS_CHOOSE_VISIBLITY": 1048576, "HAS_XML": 268435456,
+    "UNSAFE":                536870912
+}
 
 ModFlags = {
-    'DELETED':             1, 'EDIT_MODS': 2,
-    'EDIT_MOD_VISIBILITY': 4, 'EDIT_BW': 8,
-    'EDIT_RESTRICTIONS':   16, 'EDIT_GROUP': 32,
-    'SEE_COUNTER':         64, 'SEE_MOD_CHANNEL': 128,
-    'SEE_MOD_ACTIONS':     256, 'EDIT_NLP': 512,
-    'EDIT_GP_ANNC':        1024, 'EDIT_ADMINS': 2048,
-    'EDIT_SUPERMODS':      4096, 'NO_SENDING_LIMITATIONS': 8192,
+    'DELETED':             1,     'EDIT_MODS': 2,
+    'EDIT_MOD_VISIBILITY': 4,     'EDIT_BW': 8,
+    'EDIT_RESTRICTIONS':   16,    'EDIT_GROUP': 32,
+    'SEE_COUNTER':         64,    'SEE_MOD_CHANNEL': 128,
+    'SEE_MOD_ACTIONS':     256,   'EDIT_NLP': 512,
+    'EDIT_GP_ANNC':        1024,  'EDIT_ADMINS': 2048,
+    'EDIT_SUPERMODS':      4096,  'NO_SENDING_LIMITATIONS': 8192,
     'SEE_IPS':             16384, 'CLOSE_GROUP': 32768,
     'CAN_BROADCAST':       65536, 'MOD_ICON_VISIBLE': 131072,
     'IS_STAFF':            262144
-    }
+}
 
-AdminFlags = ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] | ModFlags["EDIT_GROUP"] | ModFlags["EDIT_GP_ANNC"]
+AdminFlags = (
+    ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] |
+    ModFlags["EDIT_GROUP"] | ModFlags["EDIT_GP_ANNC"]
+)
 
 Fonts = {
-    'arial': 0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4, 'palatino': 5, 'papirus': 6,
-    'times': 7, 'typewriter': 8
-    }
+    'arial': 0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4,
+    'palatino': 5, 'papirus': 6, 'times': 7, 'typewriter': 8
+}
+
 Channels = {
     "white": 0,
     "red":   256,
     "blue":  2048,
     "mod":   32768
-    }  # TODO darle uso
+}  # TODO darle uso
+
 Badges = {
     "shield": 64,
     "staff":  128
-    }  # TODO darle uso
+}  # TODO darle uso
+
 ModChannels = Badges['shield'] | Badges['staff'] | Channels['mod']
 
 
 def _genUid() -> str:
-    """Generar una uid ALeatoria de 16 dígitos. Se usa en el login por seguridad"""
+    """
+    Generar una uid ALeatoria de 16 dígitos. Se usa en el login por
+    seguridad
+    """
     return str(random.randrange(10 ** 15, 10 ** 16))
 
 
@@ -141,7 +134,8 @@ def _getAnonId(puid: str, ts: str) -> str:
     """
     Obtener una id de anon.
     @param puid: PUID del usuario de 4 cifras.
-    @param ts: Tiempo de sesión en que se conectó el anon debe ser un string con un entero
+    @param ts: Tiempo de sesión en que se conectó el anon debe ser un string
+    con un entero
     @return: Número con la id de anon
     """
     if not ts or len(ts) < 4:
@@ -159,35 +153,36 @@ def _getAnonId(puid: str, ts: str) -> str:
     return __reg5
 
 
-def convertPM(msg: str):  # TODO Medir velocidad y acelerar
+def convertPM(msg: str) -> str:
     """
     Convertir las fuentes de un mensaje normal en fuentes para el PM
     Util para usar múltiples fuentes
     @param msg: Mensaje con fuentes incrustadas
     @return: Mensaje con etiquetas f convertidas a g
     """
-    fuentes = re.findall("(<f.*?>)", msg)  # Buscar fuentes al estilo room
-    left, found, right = '', '', msg
-    msg = ''
-    while right and fuentes:
-        left, found, right = right.partition(fuentes[0])
-        s, c, f = _parseFont(found)
-        s = s or '11'
-        if c and len(c) == 6:  # TODO reducir
-            c = '{:X}{:X}{:X}'.format(*tuple(round(int(c[i:i + 2], 16) / 17) for i in (0, 2, 4)))
-        c = c and c.lower() or '00f'
-        f = f or '1'
-        msg += left + '</g>'
-        msg += '<g x{:0>2.2}s{}="{}">'.format(s, c, f)
-        if len(fuentes) > 1:
-            fuentes = fuentes[1:]
+
+    pattern = re.compile(
+        r'<f x(\d{1,2})?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})=(.*?)>'
+    )
+
+    def repl(match):
+        s, c, f = match.groups()
+        if s is None:
+            s = 11
         else:
-            fuentes = []
-    msg += right
-    return msg
+            s = int(s)
+        if len(c) == 6:
+            c = '{:X}{:X}{:X}'.format(
+                round(int(c[0:2], 16) / 17),  # r
+                round(int(c[2:4], 16) / 17),  # g
+                round(int(c[4:6], 16) / 17)   # b
+            )
+        return '</g><g x{:02}s{}="{}">'.format(s, c, f[1:-1])
+
+    return pattern.sub(repl, msg)
 
 
-def getanonname(puid: str, tssid: str) -> str:
+def getAnonName(puid: str, tssid: str) -> str:
     """
     Regresa el nombre de un anon usando su numero y tiempo de conexión
     @param puid: La id personal de un usuario anon
@@ -284,34 +279,33 @@ def _strip_html(msg: str) -> str:
         return "".join(ret)
 
 
-def _parseFont(f: str, pm = False) -> [str, str, str]:
+def _parseFont(f: str, pm=False) -> (str, str, str):
     """
     Lee el contendido de un etiqueta f y regresa
     tamaño color y fuente (en ese orden)
     @param f: El texto con la etiqueta f incrustada
     @return: Tamaño, Color, Fuente
     >>> _parseFont('x404040="7"')
-    ('', '404040', '7')
+    (None, '404040', '7')
     >>> _parseFont('xA40="7"')
-    ('', 'A40', '7')
+    (None, 'A40', '7')
     >>> _parseFont('x12A04="arial"')
     ('12', 'A04', 'arial')
     >>> _parseFont('x9404040="7"')
     ('9', '404040', '7')
     >>> _parseFont('x404040="times new roman"')
-    ('', '404040', 'times new roman')
+    (None, '404040', 'times new roman')
     >>> _parseFont('xbadfont="bad"')
     (None, None, None)
     """
     if pm:
-        matchs = re.findall('["\'](.*)["\']=([0-9a-fA-F]{3,6})s(\d{0,2})x', f[::-1])
-        # 'x(\d){0,2}s([0-9a-fA-F]{3,6})=["\'](\d)["\']'
+        regex = r'x(\d{1,2})?s([a-fA-F0-9]{6}|[a-fA-F0-9]{3})="|\'(.*?)"|\''
     else:
-        matchs = re.findall('["\'](.*)["\']=([0-9a-fA-F]{3}|[0-9a-fA-F]{6})(\d{0,2})x', f[::-1])
-    if matchs and len(matchs[0]) == 3:
-        return tuple(x[::-1] for x in matchs[0])[::-1]
-    else:
+        regex = r'x(\d{1,2})?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})="(.*?)"'
+    match = re.search(regex, f)
+    if not match:
         return None, None, None
+    return match.groups()
 
 
 def _parseNameColor(n: str) -> str:
@@ -337,10 +331,14 @@ class Struct:
 
 class WS:
     """
-    Agrupamiento de métodos estáticos para encodear y chequear frames en conexiones del protocolo WebSocket
+    Agrupamiento de métodos estáticos para encodear y chequear frames en
+    conexiones del protocolo WebSocket
     """
     _BOUNDARY_CHARS = string.digits + string.ascii_letters
-    FrameInfo = namedtuple("FrameInfo", ["fin", "opcode", "masked", "payload_length"])
+    FrameInfo = namedtuple(
+        "FrameInfo",
+        ["fin", "opcode", "masked", "payload_length"]
+    )
     CONTINUATION = 0
     TEXT = 1
     CLOSE = 8
@@ -398,9 +396,11 @@ class WS:
                 return False
             if ver[1] < 1:
                 return False
-        if "upgrade" not in headers or headers["upgrade"].lower() != "websocket":
+        if ("upgrade" not in headers or
+                headers["upgrade"].lower() != "websocket"):
             return False
-        elif "connection" not in headers or headers["connection"].lower() != "upgrade":
+        elif ("connection" not in headers or
+                headers["connection"].lower() != "upgrade"):
             return False
         elif "sec-websocket-accept" not in headers:
             return False
@@ -409,7 +409,8 @@ class WS:
     @staticmethod
     def encode(payload: object) -> bytes:
         """
-        Encodea un mensaje y lo enmascara con las reglas obligatorias del protocolo websocket
+        Encodea un mensaje y lo enmascara con las reglas obligatorias del
+        protocolo websocket
         :param payload:El string o arreglo de bytes a encodear para websocket
         :return: El arreglo de Bytes enmascarado
         """
@@ -434,11 +435,12 @@ class WS:
         return bytes(frame)
 
     @staticmethod
-    def encode_multipart(data, files, boundary = None):
+    def encode_multipart(data, files, boundary=None):
         """
         Encodear información para peticiones multipart/form-data
         @param data: Datos a enviar (diccionario)
-        @param files: Archivos a enviar en formato ({'filename':<name>,'content':<content>})
+        @param files: Archivos a enviar en formato
+            ({'filename':<name>,'content':<content>})
         @param boundary: Separador de los datos codificados
         @return: String encodeado
         """
@@ -450,10 +452,12 @@ class WS:
             boundary = ''.join(random.choice(WS._BOUNDARY_CHARS) for x in range(30))
         lineas = []
         for nombre, valor in data.items():
-            lineas.extend(('--%s' % boundary,
-                           'Content-Disposition: form-data; name="%s"' % nombre,
-                           '',
-                           str(valor)))
+            lineas.extend((
+                '--%s' % boundary,
+                'Content-Disposition: form-data; name="%s"' % nombre,
+                '',
+                str(valor)
+            ))
         for nombre, valor in files.items():
             filename = valor['filename']
             if 'mimetype' in valor:
@@ -1269,10 +1273,10 @@ class PM(WSConnection):
         @param name: Nombre del usuario
         @param password: Contraseña para la conexión
         """
-        super().__init__(name = name, password = password)
+        super().__init__(name=name, password=password)
         self._auth_re = re.compile(
-                r"auth\.chatango\.com ?= ?([^;]*)", re.IGNORECASE
-                )
+            r"auth\.chatango\.com ?= ?([^;]*)", re.IGNORECASE
+        )
         self._blocklist = set()
         self._contacts = set()
         self._name = 'PM'
@@ -2305,7 +2309,7 @@ class Room(WSConnection):
             if name == "#":
                 # name=[u.name for u in self.userlist if u.sessionids==p]
                 if n.isdigit():  # Hay anons con bots que envian malos mensajes y pueden producir fallos
-                    name = "!" + getanonname(puid, n)
+                    name = "!" + getAnonName(puid, n)
                 else:
                     # if debug:
                     #    print("Found bad message "+str(args),file=sys.stderr)
@@ -2450,7 +2454,7 @@ class Room(WSConnection):
                 if tname != 'None':
                     name = '#' + tname
                 else:
-                    name = '!' + getanonname(puid, contime)
+                    name = '!' + getAnonName(puid, contime)
             user = User(name, room = self, isanon = isanon, puid = puid)
             if user in ({self._owner} | self.mods):
                 user.setName(name)
@@ -2501,7 +2505,7 @@ class Room(WSConnection):
             if name == "#":
                 # name=[u.name for u in self.userlist if u.sessionids==p]
                 if n.isdigit():  # Hay anons con bots que envian malos mensajes y pueden producir fallos
-                    name = "!" + getanonname(puid, n)
+                    name = "!" + getAnonName(puid, n)
                 else:
                     return  # TODO En esos casos el mensaje no se muestra ni en el chat
         else:
@@ -2556,7 +2560,7 @@ class Room(WSConnection):
 
     def _rcmd_logoutok(self, args):
         """Me he desconectado, ahora usaré mi nombre de anon"""
-        self._currentname = '!' + getanonname(self._puid, str(self._connectiontime))
+        self._currentname = '!' + getAnonName(self._puid, str(self._connectiontime))
         self._user = User(self._currentname, nameColor = str(self._connectiontime).split('.')[0][-4:])
 
     def _rcmd_mods(self, args):  # TODO
@@ -2612,7 +2616,7 @@ class Room(WSConnection):
             self._user = User(self._currentname)
             pass
         elif self._authtype == 'C':  # Login incorrecto
-            self._user = User('!' + getanonname(self._connectiontime, self._puid))
+            self._user = User('!' + getAnonName(self._connectiontime, self._puid))
         elif self._authtype == 'N':
             pass
         if mods:
@@ -2637,7 +2641,7 @@ class Room(WSConnection):
             if tname != 'None':
                 name = '#' + tname
             else:
-                name = '!' + getanonname(puid, contime)
+                name = '!' + getAnonName(puid, contime)
         user = User(name, puid = puid)
         before = None
         if ssid in self._userdict:
