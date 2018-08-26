@@ -153,7 +153,7 @@ def _getAnonId(puid: str, ts: str) -> str:
     return __reg5
 
 
-def convertPM(msg: str):  # TODO Medir velocidad y acelerar
+def convertPM(msg: str) -> str:
     """
     Convertir las fuentes de un mensaje normal en fuentes para el PM
     Util para usar múltiples fuentes
@@ -161,18 +161,25 @@ def convertPM(msg: str):  # TODO Medir velocidad y acelerar
     @return: Mensaje con etiquetas f convertidas a g
     """
 
-    fonts = re.finditer(
-        r'<f x(\d{2})?([a-zA-Z0-9]{3}|[a-zA-Z0-9]{6})="(.*)">',
-        msg
+    pattern = re.compile(
+        r'<f x(\d{1,2})?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})=(.*?)>'
     )
-    for match in fonts:
-        begin, end = match.span()
-        head = msg[:begin]
-        tail = msg[end:]
+
+    def repl(match):
         s, c, f = match.groups()
-        s = s or 11  # Could be None
-        msg = head + '</g><g x{:02}s{}="{}">'.format(s, c, f) + tail
-    return msg
+        if s is None:
+            s = 11
+        else:
+            s = int(s)
+        if len(c) == 6:
+            c = '{:X}{:X}{:X}'.format(
+                round(int(c[0:2], 16) / 17),  # r
+                round(int(c[2:4], 16) / 17),  # g
+                round(int(c[4:6], 16) / 17)   # b
+            )
+        return '</g><g x{:02}s{}="{}">'.format(s, c, f[1:-1])
+
+    return pattern.sub(repl, msg)
 
 
 def getAnonName(puid: str, tssid: str) -> str:
@@ -292,9 +299,9 @@ def _parseFont(f: str, pm=False) -> (str, str, str):
     (None, None, None)
     """
     if pm:
-        regex = r'x(\d{,2})s([a-zA-Z0-9]{3}|[a-zA-Z0-9]{6})="(.*?)"'
+        regex = r'x(\d{1,2})?s([a-fA-F0-9]{6}|[a-fA-F0-9]{3})="|\'(.*?)"|\''
     else:
-        regex = r'x(\d{,2})([a-zA-Z0-9]{3}|[a-zA-Z0-9]{6})="(.*?)"'
+        regex = r'x(\d{1,2})?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})="(.*?)"'
     match = re.search(regex, f)
     if not match:
         return None, None, None
