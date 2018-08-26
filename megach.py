@@ -449,7 +449,7 @@ class WS:
             return s.replace('"', '\\"')
 
         if boundary is None:
-            boundary = ''.join(random.choice(WS._BOUNDARY_CHARS) for x in range(30)
+            boundary = ''.join(random.choice(WS._BOUNDARY_CHARS) for x in range(30))
         lineas = []
         for nombre, valor in data.items():
             lineas.extend((
