@@ -2298,8 +2298,7 @@ class Room(WSConnection):
             ispremium = channel & 4 > 0
             hasbg = channel & 8 > 0
             if debug and (channel & 48 or channel & 3):  # TODO para depurar
-                print("ALERTA, valor detectado %s en '%s'. Favor informar a MegaMaster12" % (channel, args),
-                      file = sys.stderr)
+                pass  # TODO manipular información de los canales 1|2 (3) y 16|32(48)
             channel = ((channel & 2048) | (channel & 256)) | (
                     channel & 35072)  # Se detectan 4 canales y sus combinaciones
         body, n, f = _clean_message(rawmsg)
@@ -2313,7 +2312,7 @@ class Room(WSConnection):
                 else:
                     # if debug:
                     #    print("Found bad message "+str(args),file=sys.stderr)
-                    return  # TODO En esos casos el mensaje no se muestra ni en el chat
+                    return  # TODO en estos casos el mensaje no se muestra ni en el chat
         else:
             if n:
                 nameColor = n
