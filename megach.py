@@ -7,7 +7,7 @@ Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.3.1
+Version: 1.3.2
 """
 ################################################################
 # Imports
@@ -39,7 +39,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.3.1'
+version = 'M1.3.2'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -442,7 +442,7 @@ class WS:
             return s.replace('"', '\\"')
 
         if boundary is None:
-            boundary = ''.join(random.choices(WS._BOUNDARY_CHARS, k=30))
+            boundary = ''.join(random.choice(WS._BOUNDARY_CHARS) for x in range(30)
         lineas = []
         for nombre, valor in data.items():
             lineas.extend((
@@ -1564,7 +1564,7 @@ class Room(WSConnection):
     Base para manejar las conexiones con las salas. Hereda de WSConnection y tiene todas
     sus propiedades
     """
-
+    _BANDATA = namedtuple('BanData', ['unid', 'ip', 'target', 'time', 'src'])
     def __dir__(self):
         return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
 
@@ -1588,7 +1588,7 @@ class Room(WSConnection):
         self._msgs = dict()  # TODO esto y history es lo mismo?
         self._name = name
         self._nameColor = ''
-        self._port = 1800  # TODO
+        self._port = 8080  # TODO
         self._rbuf = b''
         self._server = getServer(name)  # TODO
         self._connectiontime = 0
@@ -1599,6 +1599,7 @@ class Room(WSConnection):
         self._info = ['', '']  # TODO Title, about
         self._owner = None
         self._unbanlist = dict()
+        self._unbanqueue = deque(maxlen = 500)
         self._user = None
         self._users = deque()  # TODO reemplazar userlist con userdict y userhistory
         self._userdict = dict()  # TODO {ssid:{user},}
@@ -1731,7 +1732,7 @@ class Room(WSConnection):
 
     @property
     def unbanlist(self):
-        return list(self._unbanlist.keys())
+        return list(set(x.target.name for x in self._unbanqueue))
 
     @property
     def user(self):
@@ -1780,7 +1781,7 @@ class Room(WSConnection):
         if mode < 2:
             return [(x.name if mode else x, len(x.getSessionIds(self))) for x in self._getUserlist(1, memory)]
         else:
-            return [(x.showname, len(x.getSessionIds(self))) for x in self._getUserlist(1, memory, anons)]
+            return [(x.showname, len(x.getSessionIds(self))) for x in self._getUserlist(1, memory)]
 
     def _addHistory(self, msg):
         """
@@ -2285,7 +2286,7 @@ class Room(WSConnection):
             badge = (channel & 192) // 64
             ispremium = channel & 4 > 0
             hasbg = channel & 8 > 0
-            if debug and (channel & 16 or channel & 32 or channel & 1 or channel & 2):  # TODO para depurar
+            if debug and (channel & 48 or channel & 3):  # TODO para depurar
                 print("ALERTA, valor detectado %s en '%s'. Favor informar a MegaMaster12" % (channel, args),
                       file = sys.stderr)
             channel = ((channel & 2048) | (channel & 256)) | (
@@ -2299,6 +2300,8 @@ class Room(WSConnection):
                 if n.isdigit():  # Hay anons con bots que envian malos mensajes y pueden producir fallos
                     name = "!" + getAnonName(puid, n)
                 else:
+                    # if debug:
+                    #    print("Found bad message "+str(args),file=sys.stderr)
                     return  # TODO En esos casos el mensaje no se muestra ni en el chat
         else:
             if n:
@@ -2346,19 +2349,15 @@ class Room(WSConnection):
         pass
 
     def _rcmd_blocked(self, args):  # TODO Que era todo esto?
-        user = None
-        if args[3]:
-            user = User(args[3])
-        target = None
-        if args[2] == "":
+        target = args[2] and User(args[2]) or ''
+        user = args[3] and User(args[3]) or None
+        if not target:
             msx = [msg for msg in self._history if msg.unid == args[0]]
-            if msx:
-                target = msx[0].user
+            target = msx and msx[0].user or User('ANON')
             self._callEvent('onAnonBan', user, target)
         else:
-            target = User(args[2])
             self._callEvent("onBan", user, target)
-        self._banlist[target] = {"unid": args[0], "ip": args[1], "target": target, "time": float(args[4]), "src": user}
+        self._banlist[target] = self._BANDATA(args[0], args[1], target, float(args[4]), user)
 
     def _rcmd_blocklist(self, args):  # TODO
         self._banlist = dict()
@@ -2370,13 +2369,7 @@ class Room(WSConnection):
             if params[2] == "":
                 continue
             user = User(params[2])
-            self._banlist[user] = {
-                "unid":   params[0],
-                "ip":     params[1],
-                "target": user,
-                "time":   float(params[3]),
-                "src":    User(params[4])
-                }
+            self._banlist[user] = self._BANDATA(params[0], params[1], user, float(params[3]), User(params[4]))
         self._callEvent("onBanlistUpdate")
 
     def _rcmd_bw(self, args):  # Palabras baneadas en el chat
@@ -2541,10 +2534,8 @@ class Room(WSConnection):
         self.requestUnBanlist()
         if self.attempts == 1:
             self._callEvent("onConnect")
-            # TODO
         else:
             self._callEvent("onReconnect")
-            # TODO
         if args and debug:
             print('New Unhandled arg on inited ', file = sys.stderr)
         # comprobar el tamaño máximo del history y solicitar anteriores hasta llenar
@@ -2639,6 +2630,9 @@ class Room(WSConnection):
             else:
                 name = '!' + getAnonName(puid, contime)
         user = User(name, puid = puid)
+        before = None
+        if ssid in self._userdict:
+            before = self._userdict[ssid][1]
         if cambio == '0':  # Leave
             user.removeSessionId(self, ssid)  # Quitar la id de sesión activa
             self._callEvent('onLeave', user, puid)
@@ -2652,7 +2646,7 @@ class Room(WSConnection):
                     self._userhistory.append([contime, usr])
             if user.isanon:
                 self._callEvent('onAnonLeave', user, puid)
-        elif cambio == '1':  # Join
+        elif cambio == '1' or not before:  # Join
             user.addSessionId(self, ssid)  # Agregar la sesión al usuario
             if not user.isanon and user not in self.userlist:
                 self._callEvent('onJoin', user, puid)
@@ -2662,10 +2656,7 @@ class Room(WSConnection):
         else:  # 2 Account Change
             # Quitar la cuenta anterior de la lista y agregar la nueva
             # TODO conectar cuentas que han cambiado usando este método
-            before = None
-            if ssid in self._userdict:
-                before = self._userdict[ssid][1]
-            if before and before.isanon:  # Login
+            if before.isanon:  # Login
                 if user.isanon:  # Anon Login
                     self._callEvent('onAnonLogin', user, puid)  # TODO
                 else:  # User Login
@@ -2719,38 +2710,46 @@ class Room(WSConnection):
         self._ubw = args
         pass
 
-    def _rcmd_unblocked(self, args):  # TODO
-        args = ":".join(args).split(";")[-1].split(":")  # TODO checar
-        user = User(args[3])
-        target = args[2]
-        if target == "":
-            msx = [msg for msg in self._history if msg.unid == args[0]]
-            if msx:
-                target = msx[0].user
-            self._callEvent('onAnonUnban', user, target)
+    def _rcmd_unblocked(self, args):
+        """Se ha quitado el ban a un usuario"""
+        unid = args[0]
+        ip = args[1]
+        # En caso de ban múltiple a misma cuenta, guardar solo el primer valor
+        target = args[2].split(';')[0]
+        # TODO verificar que otra accion se puede hacer con un ban multiple
+        # args[3:-3] if len(args)>5
+        bnsrc = args[-3]  # TODO utilidad del bnsrc (el que banea)
+        ubsrc = User(args[-2])
+        time = args[-1]
+        self._unbanqueue.append(self._BANDATA(unid, ip, target, float(time), ubsrc))
+        if target == '':
+            # Si el baneado era anon, intentar otbener su nombre
+            msx = [msg for msg in self._history if msg.unid == unid]
+            target = msx and msx[0].user or User('anon')
+            self._callEvent('onAnonUnban', ubsrc, target)
         else:
-            target = User(args[2])
-            del self._banlist[target]
-            self._callEvent("onUnban", user, target)
-        self._unbanlist[user] = {"unid": args[0], "ip": args[1], "target": target, "time": float(args[4]), "src": user}
+            if target in self._banlist:
+                self._banlist.pop(target)
+            target = User(target)
+            self._callEvent("onUnban", ubsrc, target)
 
-    def _rcmd_unblocklist(self, args):  # TODO
-        self._unbanlist = dict()
+    def _rcmd_unblocklist(self, args):
         sections = ":".join(args).split(";")
-        for section in sections:
+        for section in sections[::-1]:
             params = section.split(":")
             if len(params) != 5:
                 continue
-            if params[2] == "":
-                continue
-            user = User(params[2] or 'Anon')
-            self._unbanlist[user] = {
-                "unid":   params[0],
-                "ip":     params[1],
-                "target": user,
-                "time":   float(params[3]),
-                "src":    User(params[4])
-                }
+            unid = params[0]
+            ip = params[1]
+            target = User(params[2] or 'Anon')
+            time = float(params[3])
+            src = User(params[4])
+            self._unbanqueue.append(self._BANDATA(unid,
+                                  ip,
+                                  target,
+                                  time,
+                                  src)
+                    )
         self._callEvent("onUnBanlistUpdate")
 
     def _rcmd_updatemoderr(self, args):
@@ -2794,6 +2793,7 @@ class Gestor:
         self._user = User(self._name)
         self._tasks = set()
         self._pm = None
+        self._badconns = queue.Queue()
         self.bgmode = False
         if pm:
             self._pm = PM(mgr = self, name = self.name, password = self.password)
