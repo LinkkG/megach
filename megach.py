@@ -7,7 +7,7 @@ Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.3.2
+Version: 1.3.3
 """
 ################################################################
 # Imports
@@ -30,6 +30,7 @@ import threading
 import urllib.parse as urlparse
 import urllib.request as urlreq
 from urllib.error import HTTPError, URLError
+from xml.etree import cElementTree as ET
 
 if sys.version_info[1] < 5:
     from html.parser import HTMLParser
@@ -39,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.3.2'
+version = 'M1.3.3'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -52,72 +53,60 @@ sv6 = 104
 sv8 = 101
 sv10 = 110
 sv12 = 116
-tsweights = [
-    ['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
-    ["17", w12], ["18", w12], ["9", sv2], ["11", sv2], ["12", sv2],
-    ["13", sv2], ["14", sv2], ["15", sv2], ["19", sv4], ["23", sv4],
-    ["24", sv4], ["25", sv4], ["26", sv4], ["28", sv6], ["29", sv6],
-    ["30", sv6], ["31", sv6], ["32", sv6], ["33", sv6], ["35", sv8],
-    ["36", sv8], ["37", sv8], ["38", sv8], ["39", sv8], ["40", sv8],
-    ["41", sv8], ["42", sv8], ["43", sv8], ["44", sv8], ["45", sv8],
-    ["46", sv8], ["47", sv8], ["48", sv8], ["49", sv8], ["50", sv8],
-    ["52", sv10], ["53", sv10], ["55", sv10], ["57", sv10], ["58", sv10],
-    ["59", sv10], ["60", sv10], ["61", sv10], ["62", sv10], ["63", sv10],
-    ["64", sv10], ["65", sv10], ["66", sv10], ["68", sv2], ["71", sv12],
-    ["72", sv12], ["73", sv12], ["74", sv12], ["75", sv12], ["76", sv12],
-    ["77", sv12], ["78", sv12], ["79", sv12], ["80", sv12], ["81", sv12],
-    ["82", sv12], ["83", sv12], ["84", sv12]
-]
+tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
+             ["17", w12], ["18", w12], ["9", sv2], ["11", sv2], ["12", sv2],
+             ["13", sv2], ["14", sv2], ["15", sv2], ["19", sv4], ["23", sv4],
+             ["24", sv4], ["25", sv4], ["26", sv4], ["28", sv6], ["29", sv6],
+             ["30", sv6], ["31", sv6], ["32", sv6], ["33", sv6], ["35", sv8],
+             ["36", sv8], ["37", sv8], ["38", sv8], ["39", sv8], ["40", sv8],
+             ["41", sv8], ["42", sv8], ["43", sv8], ["44", sv8], ["45", sv8],
+             ["46", sv8], ["47", sv8], ["48", sv8], ["49", sv8], ["50", sv8],
+             ["52", sv10], ["53", sv10], ["55", sv10], ["57", sv10],
+             ["58", sv10], ["59", sv10], ["60", sv10], ["61", sv10],
+             ["62", sv10], ["63", sv10], ["64", sv10], ["65", sv10],
+             ["66", sv10], ["68", sv2], ["71", sv12], ["72", sv12],
+             ["73", sv12], ["74", sv12], ["75", sv12], ["76", sv12],
+             ["77", sv12], ["78", sv12], ["79", sv12], ["80", sv12],
+             ["81", sv12], ["82", sv12], ["83", sv12], ["84", sv12]]
 _maxServernum = sum(x[1] for x in tsweights)
 
 GroupFlags = {
-    "LIST_TAXONOMY":         1,       "NOANONS": 4,
-    "NOFLAGGING":            8,       "NOCOUNTER": 16,
-    "NOIMAGES":              32,      "NOLINKS": 64,
-    "NOVIDEOS":              128,     "NOSTYLEDTEXT": 256,
-    "NOLINKSCHATANGO":       512,     "NOBRDCASTMSGWITHBW": 1024,
-    "RATELIMITREGIMEON":     2048,    "CHANNELSDISABLED": 8192,
-    "NLP_SINGLEMSG":         16384,   "NLP_MSGQUEUE": 32768,
-    "BROADCAST_MODE":        65536,   "CLOSED_IF_NO_MODS": 131072,
-    "IS_CLOSED":             262144,  "SHOW_MOD_ICONS": 524288,
-    "MODS_CHOOSE_VISIBLITY": 1048576, "HAS_XML": 268435456,
-    "UNSAFE":                536870912
-}
+    "LIST_TAXONOMY":         1, "NOANONS": 4, "NOFLAGGING": 8, "NOCOUNTER": 16,
+    "NOIMAGES":              32, "NOLINKS": 64, "NOVIDEOS": 128,
+    "NOSTYLEDTEXT":          256, "NOLINKSCHATANGO": 512,
+    "NOBRDCASTMSGWITHBW":    1024, "RATELIMITREGIMEON": 2048,
+    "CHANNELSDISABLED":      8192, "NLP_SINGLEMSG": 16384,
+    "NLP_MSGQUEUE":          32768, "BROADCAST_MODE": 65536,
+    "CLOSED_IF_NO_MODS":     131072, "IS_CLOSED": 262144,
+    "SHOW_MOD_ICONS":        524288, "MODS_CHOOSE_VISIBLITY": 1048576,
+    "HAS_XML":               268435456, "UNSAFE": 536870912
+    }
 
 ModFlags = {
-    'DELETED':             1,     'EDIT_MODS': 2,
-    'EDIT_MOD_VISIBILITY': 4,     'EDIT_BW': 8,
-    'EDIT_RESTRICTIONS':   16,    'EDIT_GROUP': 32,
-    'SEE_COUNTER':         64,    'SEE_MOD_CHANNEL': 128,
-    'SEE_MOD_ACTIONS':     256,   'EDIT_NLP': 512,
-    'EDIT_GP_ANNC':        1024,  'EDIT_ADMINS': 2048,
-    'EDIT_SUPERMODS':      4096,  'NO_SENDING_LIMITATIONS': 8192,
-    'SEE_IPS':             16384, 'CLOSE_GROUP': 32768,
-    'CAN_BROADCAST':       65536, 'MOD_ICON_VISIBLE': 131072,
-    'IS_STAFF':            262144
-}
+    'DELETED':           1, 'EDIT_MODS': 2, 'EDIT_MOD_VISIBILITY': 4,
+    'EDIT_BW':           8, 'EDIT_RESTRICTIONS': 16, 'EDIT_GROUP': 32,
+    'SEE_COUNTER':       64, 'SEE_MOD_CHANNEL': 128, 'SEE_MOD_ACTIONS': 256,
+    'EDIT_NLP':          512, 'EDIT_GP_ANNC': 1024, 'EDIT_ADMINS': 2048,
+    'EDIT_SUPERMODS':    4096, 'NO_SENDING_LIMITATIONS': 8192, 'SEE_IPS': 16384,
+    'CLOSE_GROUP':       32768, 'CAN_BROADCAST': 65536,
+    'MOD_ICON_VISIBLE':  131072, 'IS_STAFF': 262144
+    }
 
-AdminFlags = (
-    ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] |
-    ModFlags["EDIT_GROUP"] | ModFlags["EDIT_GP_ANNC"]
-)
+AdminFlags = (ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] | ModFlags[
+    "EDIT_GROUP"] | ModFlags["EDIT_GP_ANNC"])
 
 Fonts = {
-    'arial': 0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4,
+    'arial':    0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4,
     'palatino': 5, 'papirus': 6, 'times': 7, 'typewriter': 8
-}
+    }
 
 Channels = {
-    "white": 0,
-    "red":   256,
-    "blue":  2048,
-    "mod":   32768
-}  # TODO darle uso
+    "white": 0, "red": 256, "blue": 2048, "mod": 32768
+    }  # TODO darle uso
 
 Badges = {
-    "shield": 64,
-    "staff":  128
-}  # TODO darle uso
+    "shield": 64, "staff": 128
+    }  # TODO darle uso
 
 ModChannels = Badges['shield'] | Badges['staff'] | Channels['mod']
 
@@ -162,8 +151,7 @@ def convertPM(msg: str) -> str:
     """
 
     pattern = re.compile(
-        r'<f x(\d{1,2})?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})=(.*?)>'
-    )
+            r'<f x(\d{1,2})?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})=(.*?)>')
 
     def repl(match):
         s, c, f = match.groups()
@@ -172,11 +160,10 @@ def convertPM(msg: str) -> str:
         else:
             s = int(s)
         if len(c) == 6:
-            c = '{:X}{:X}{:X}'.format(
-                round(int(c[0:2], 16) / 17),  # r
-                round(int(c[2:4], 16) / 17),  # g
-                round(int(c[4:6], 16) / 17)   # b
-            )
+            c = '{:X}{:X}{:X}'.format(round(int(c[0:2], 16) / 17),  # r
+                                      round(int(c[2:4], 16) / 17),  # g
+                                      round(int(c[4:6], 16) / 17)  # b
+                                      )
         return '</g><g x{:02}s{}="{}">'.format(s, c, f[1:-1])
 
     return pattern.sub(repl, msg)
@@ -234,7 +221,6 @@ def getServerNumber(group: str) -> int:
 
 def _clean_message(msg: str, pm: bool = False) -> [str, str, str]:
     """
-    TODO Revisar carácteres comilla y escapes en mensajes
     Clean a message and return the message, n tag and f tag.
     @type msg: str
     @param msg: the message
@@ -279,24 +265,12 @@ def _strip_html(msg: str) -> str:
         return "".join(ret)
 
 
-def _parseFont(f: str, pm=False) -> (str, str, str):
+def _parseFont(f: str, pm = False) -> (str, str, str):
     """
     Lee el contendido de un etiqueta f y regresa
     tamaño color y fuente (en ese orden)
     @param f: El texto con la etiqueta f incrustada
     @return: Tamaño, Color, Fuente
-    >>> _parseFont('x404040="7"')
-    (None, '404040', '7')
-    >>> _parseFont('xA40="7"')
-    (None, 'A40', '7')
-    >>> _parseFont('x12A04="arial"')
-    ('12', 'A04', 'arial')
-    >>> _parseFont('x9404040="7"')
-    ('9', '404040', '7')
-    >>> _parseFont('x404040="times new roman"')
-    (None, '404040', 'times new roman')
-    >>> _parseFont('xbadfont="bad"')
-    (None, None, None)
     """
     if pm:
         regex = r'x(\d{1,2})?s([a-fA-F0-9]{6}|[a-fA-F0-9]{3})="|\'(.*?)"|\''
@@ -315,7 +289,7 @@ def _parseNameColor(n: str) -> str:
 
 
 ################################################################
-# Inicio del bot
+# Utils
 ################################################################
 class Struct:
     """
@@ -329,16 +303,18 @@ class Struct:
         return '<Struct>'
 
 
+################################################################
+# Inicio del bot
+################################################################
+
 class WS:
     """
     Agrupamiento de métodos estáticos para encodear y chequear frames en
     conexiones del protocolo WebSocket
     """
     _BOUNDARY_CHARS = string.digits + string.ascii_letters
-    FrameInfo = namedtuple(
-        "FrameInfo",
-        ["fin", "opcode", "masked", "payload_length"]
-    )
+    FrameInfo = namedtuple("FrameInfo",
+                           ["fin", "opcode", "masked", "payload_length"])
     CONTINUATION = 0
     TEXT = 1
     CLOSE = 8
@@ -396,15 +372,13 @@ class WS:
                 return False
             if ver[1] < 1:
                 return False
-        if ("upgrade" not in headers or
-                headers["upgrade"].lower() != "websocket"):
+        if headers.get('upgrade', '').lower() != 'websocket':
             return False
-        elif ("connection" not in headers or
-                headers["connection"].lower() != "upgrade"):
+        elif headers.get('connection', '').lower() != 'upgrade':
             return False
-        elif "sec-websocket-accept" not in headers:
+        elif 'sec-websocket-accept' not in headers:
             return False
-        return headers["sec-websocket-accept"]
+        return headers['sec-websocket-accept']
 
     @staticmethod
     def encode(payload: object) -> bytes:
@@ -435,7 +409,7 @@ class WS:
         return bytes(frame)
 
     @staticmethod
-    def encode_multipart(data, files, boundary=None):
+    def encode_multipart(data, files, boundary = None):
         """
         Encodear información para peticiones multipart/form-data
         @param data: Datos a enviar (diccionario)
@@ -449,32 +423,26 @@ class WS:
             return s.replace('"', '\\"')
 
         if boundary is None:
-            boundary = ''.join(random.choice(WS._BOUNDARY_CHARS) for x in range(30))
+            boundary = ''.join(
+                    random.choice(WS._BOUNDARY_CHARS) for x in range(30))
         lineas = []
         for nombre, valor in data.items():
-            lineas.extend((
-                '--%s' % boundary,
-                'Content-Disposition: form-data; name="%s"' % nombre,
-                '',
-                str(valor)
-            ))
+            lineas.extend(('--%s' % boundary,
+                           'Content-Disposition: form-data; name="%s"' % nombre,
+                           '', str(valor)))
         for nombre, valor in files.items():
             filename = valor['filename']
             if 'mimetype' in valor:
                 mimetype = valor['mimetype']
             else:
-                mimetype = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+                mimetype = mimetypes.guess_type(filename)[
+                               0] or 'application/octet-stream'
             lineas.extend(('--%s' % boundary,
-                           'Content-Disposition: form-data; name="%s"; filename="%s"' % (
+                           'Content-Disposition: form-data; name="%s"; '
+                           'filename="%s"' % (
                                escape_quote(nombre), escape_quote(filename)),
-                           'Content-Type: %s' % mimetype,
-                           '',
-                           valor['content']
-                           ))
-        lineas.extend((
-            '--%s--' % boundary,
-            '',
-            ))
+                           'Content-Type: %s' % mimetype, '', valor['content']))
+        lineas.extend(('--%s--' % boundary, '',))
         body = '\r\n'.join(lineas)
         headers = {
             'Content-Type':   'multipart/form-data; boundary=%s' % boundary,
@@ -500,13 +468,14 @@ class WS:
         elif (buffer[1] & 127) == 127:
             payload_length += int.from_bytes(buffer[2:10], "big")
         # noinspection PyCallByClass
-        return WS.FrameInfo(bool(buffer[0] & 128), buffer[0] & 15, bool(buffer[1] & 128),
-                            payload_length)
+        return WS.FrameInfo(bool(buffer[0] & 128), buffer[0] & 15,
+                            bool(buffer[1] & 128), payload_length)
 
     @staticmethod
     def getHeaders(headers: bytes) -> dict:
         """
-        Recibe una serie de datos, comprueba si es un handshake válido para websocket y retorna un diccionario
+        Recibe una serie de datos, comprueba si es un handshake válido para
+        websocket y retorna un diccionario
         @param headers: Los datos recibidos
         @return: Los headers en formato dict
         """
@@ -516,15 +485,18 @@ class WS:
             headers = headers.decode(errors = 'ignore')
         if isinstance(headers, str):
             headers = headers.splitlines()
-        if isinstance(headers, list):  # Convertirlo en diccionario e ignorar los valores incorrectos
-            headers = map((lambda x: x.split(':', 1) if len(x.split(':')) > 1 else ('', '')), headers)
-            headers = {z.lower().strip(): y.strip() for z, y in headers if z and y}
+        if isinstance(headers, list):
+            # Convertirlo en diccionario e ignorar valores incorrectos
+            headers = map((lambda x: x.split(':', 1) if len(
+                    x.split(':')) > 1 else ('', '')), headers)
+            headers = {z.lower().strip(): y.strip() for z, y in headers if
+                       z and y}
         return headers
 
     @staticmethod
     def getPayload(buffer: bytes):
         """
-        Decodifica un mensaje enviado por el servidor y lo vuelve legible para usarlo más fácil
+        Decodifica un mensaje enviado por el servidor y lo vuelve legible
         :param buffer: Bytes que serán procesados
         :return: Un string procesado o [int,string procesado]
         """
@@ -538,15 +510,18 @@ class WS:
         if info[1] == WS.TEXT and info.fin:
             return payload.decode("utf-8", "replace")
         elif info[1] == WS.CLOSE:
-            return int.from_bytes(payload[:2], "big"), payload[2:].decode("utf-8", "replace")
+            return int.from_bytes(payload[:2], "big"), payload[2:].decode(
+                    "utf-8", "replace")
         return payload
 
     @staticmethod
     def getServerSeckey(headers: bytes, key: bytes = b'') -> str:
         """
-        Calcula la respuesta que debe dar el servidor según la clave de seguridad que se le envió
-        @param headers: Los valores enviados al servidor. Si se recibe, se ignorará el parámetro key
-        @param key: La clave que se le envió.
+        Calcula la respuesta que debe dar el servidor según la clave de
+        seguridad que se le envió
+        @param headers: Los valores enviados al servidor. Si se recibe,
+        se ignorará el parámetro key
+        @param key: La clave que se le envió al servidor.
         @return: Clave que debería enviar el servidor (string)
         """
         if headers:
@@ -557,9 +532,10 @@ class WS:
     @staticmethod
     def unmask_buff(buffer: bytes) -> bytes:
         """
-        Recibe bytes con una mascara de websocket y la remueve para leerlos con fácilidad
-        :param buffer: Los datos enmascarados
-        :return: Los mismos datos sin su máscara
+        Recibe bytes con una mascara de websocket y la remueve para leerlos
+        con fácilidad
+        @param buffer: Los datos enmascarados
+        @return: bytes Los mismos datos sin su máscara
         """
         mask = buffer[:4]
         return bytes(x ^ mask[i % 4] for i, x in enumerate(buffer[4:]))
@@ -573,14 +549,16 @@ class WS:
         @param headers: Las cabeceras de la petición post
         @return:
         """
-        if type(data) is dict:  # TODO debería hacer esto solo si es un diccionario
+        if type(data) is dict:  # TODO debería hacer esto solo si es un
+            # diccionario
             data = urlparse.urlencode(data).encode('latin-1')
         elif type(data) is str:
             data = data.encode('latin-1')
         if not headers:
-            headers = {"host": "chatango.com", "origin": "http://st.chatango.com"}
-        pet = urlreq.Request(url, data = data,
-                             headers = headers)
+            headers = {
+                "host": "chatango.com", "origin": "http://st.chatango.com"
+                }
+        pet = urlreq.Request(url, data = data, headers = headers)
         try:
             resp = urlreq.urlopen(pet)
             return resp
@@ -591,12 +569,16 @@ class WS:
         except Exception as e:
             raise  # TODO no controlada
 
+
 class User:
     """
     Clase que representa a un usuario de chatango
     Iniciarlo sin el guion bajo para evitar inconvenientes
     """
     _users = {}
+    _INFO = namedtuple('userinfo',
+                       ['about', 'gender', 'age', 'country', 'bgtime'])
+
     def __new__(cls, name, **kwargs):
         if name is None:
             name = ""
@@ -609,6 +591,7 @@ class User:
         self._fontColor = '0'
         self._fontFace = '0'
         self._fontSize = 12
+        self._info = None
         self._ip = ''
         self._isanon = not len(name) or name[0] in '!#'
         self._mbg = False
@@ -627,7 +610,9 @@ class User:
         return self
 
     def __dir__(self):
-        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
+        return [x for x in
+                set(list(self.__dict__.keys()) + list(dir(type(self)))) if
+                x[0] != '_']
 
     def __radd__(self, other):
         return str(other) + self.showname
@@ -682,8 +667,10 @@ class User:
         return self._nameColor
 
     @property
-    def namecolor(self):
-        return '<n%s/>' % (self.nameColor[::2] if len(self.nameColor) == 6 else self.nameColor[:3])
+    def namecolor(self):  # TODO
+        return '<n%s/>' % (
+            self.nameColor[::2] if len(self.nameColor) == 6 else self.nameColor[
+                                                                 :3])
 
     @property
     def showname(self) -> str:
@@ -705,6 +692,43 @@ class User:
             return self._sids.get(room, set())
         else:
             return set.union(*self._sids.values())
+
+    @property
+    def info(self):
+        if self._info:
+            return self._info
+        link = '/%s/%s/' % ('/'.join((self.name * 2)[:2]), self.name)
+        url = 'http://fp.chatango.com/profileimg' + link + 'mod1.xml'
+        try:
+            mixml = ET.fromstring(urlreq.urlopen(url).read().decode('utf-8'))
+        except:
+            return None
+        buscar = 'body s b l d'
+        encontrado = []
+        for x in buscar.split():
+            encontrado.append(mixml.findtext(x, ''))
+        self._info = User._INFO(*encontrado)
+        return self._info
+
+    @property
+    def age(self):
+        return self.info and self.info.age or None
+
+    @property
+    def about(self):
+        return self.info and _clean_message(urlreq.unquote(self.info.about))[
+            0] or None
+
+    @property
+    def country(self):
+        return self.info and self.info.country
+
+    @property
+    def gender(self):
+        return self.info and self.info.gender.lower() or None
+
+    def premiumtime(self):
+        return self.info and self.info.bgtime or None
 
     sessionids = property(getSessionIds)
 
@@ -782,7 +806,9 @@ class Message:
         return self.body + str(otro)
 
     def __dir__(self):
-        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
+        return [x for x in
+                set(list(self.__dict__.keys()) + list(dir(type(self)))) if
+                x[0] != '_']
 
     def __radd__(self, otro):
         return str(otro) + self.body
@@ -925,9 +951,12 @@ class WSConnection:
     Base para manejar las conexiones con Mensajes y salas.
     No Instanciar directamente
     """
-    BIGMESSAGECUT = False  # Si es True se manda solo un pedazo de los mensajes, false y se mandan todos
-    MAXLEN = 2700  # 2900 ON PM IS > 12000
-    PINGINTERVAL = 90  # Intervalo para enviar pings, Si llega a 300 se desconecta
+    # True: cortar mensajes grandes, False: enviarlos en trozos
+    BIGMESSAGECUT = False
+    MAXLEN = 2700  # Room is 2900, PM IS 12000
+    PINGINTERVAL = 90  # Intervalo para enviar pings, Si llega a 300 se
+
+    # desconecta
 
     def __radd__(self, other):
         return str(other) + self.name
@@ -936,7 +965,9 @@ class WSConnection:
         return self.name + str(other)
 
     def __dir__(self):
-        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
+        return [x for x in
+                set(list(self.__dict__.keys()) + list(dir(type(self)))) if
+                x[0] != '_']
 
     def __str__(self):
         return self.name
@@ -944,8 +975,8 @@ class WSConnection:
     def __repr__(self):
         return "<%s: %s>" % (self.__class__.__name__, self.name)
 
-    def __init__(self, mgr: object = None, name: str = '', password: str = '', server: str = '',
-                 port: str = None, origin: str = '') -> None:
+    def __init__(self, mgr: object = None, name: str = '', password: str = '',
+                 server: str = '', port: str = None, origin: str = '') -> None:
         """
         @param mgr: El dueño de esta conexión
         @param name: El nombre de usuario si no hay se conecta como anon
@@ -954,6 +985,7 @@ class WSConnection:
         @param port:
         @param origin:
         """
+        # TODO documentar
         self._bgmode = 0
         self._connectattempts = 0
         self._connected = False
@@ -968,13 +1000,17 @@ class WSConnection:
         self._rbuf = b''  # El buffer de lectura  de la conexión
         self._server = server
         self._connectiontime = 0  # Hora del servidor a la que se entra
-        self._correctiontime = 0  # Diferencia entre la hora local y la del server
-        self._serverheaders = b''  # Las caberceras de respuesta que envió el servidor
+        self._correctiontime = 0  # Diferencia entre la hora local y la del
+        # server
+        self._serverheaders = b''  # Las caberceras de respuesta que envió el
+        #  servidor
         self._sock = None
         self._user = User(name)
         self._wbuf = b''  # El buffer de escritura a la conexión
-        self._wlock = False  # Si está activo no se debe envíar nada al buffer de escritura
-        self._wlockbuf = b''  # Buffer de escritura bloqueado, se almacena aquí cuando el lock está activo
+        self._wlock = False  # Si está activo no se debe envíar nada al
+        # buffer de escritura
+        self._wlockbuf = b''  # Buffer de escritura bloqueado, se almacena
+        # aquí cuando el lock está activo
         self.mgr = mgr  # El dueño de esta conexión
         if mgr:  # Si el manager está activo iniciar la conexión directamente
             self._bgmode = int(self.mgr.bgmode)
@@ -982,9 +1018,11 @@ class WSConnection:
 
     @property
     def account(self) -> str:
-        """La cuenta que se está usando actualmente, por seguridad la clave solo será accesible con .password"""
+        """
+        La cuenta que se está usando, evitar mostrar la password en público
+        """
         cuenta = User(self._currentaccount[0])
-        cuenta.password = self._currentaccount[1]
+        cuenta._password = self._currentaccount[1]
         return cuenta
 
     @property
@@ -999,7 +1037,7 @@ class WSConnection:
 
     @property
     def currentname(self) -> str:
-        """El nombre de usuario que está usando actualmente el bot en esta conexión"""
+        """El nombre de usuario que está usando el bot en la conexión"""
         return self._currentname
 
     @property
@@ -1036,15 +1074,22 @@ class WSConnection:
         if not self._connected:
             self._connectattempts += 1
             self._sock = socket.socket()
-            self._sock.connect((self._server, self._port))  # TODO Si no hay internet hay error acá
-            self._sock.setblocking(False)
-            self._handShake()
+            try:
+                # TODO Comprobar, si no hay internet hay error acá
+                self._sock.connect((self._server, self._port))
+                self._sock.setblocking(False)
+                self._handShake()
+            except:
+                self._disconnect()
+                return False
             return True
         return False
 
     def _disconnect(self):
-        """Privado: Solo usar para reconneción
-        Cierra la conexión y detiene los pings, pero el objeto sigue existiendo dentro de su mgr"""
+        """
+        Privado: Solo usar para reconneción
+        Cierra la conexión y detiene los pings, el objeto sigue existiendo
+        """
         with self.mgr.connlock:
             self._connected = False
             if self._sock is not None:
@@ -1081,20 +1126,23 @@ class WSConnection:
         self._headers = b''
         self._serverheaders = b''
         self._wbuf = b''  # El buffer de escritura a la conexión
-        self._wlock = False  # Si está activo no se debe envíar nada al buffer de escritura
-        self._wlockbuf = b''  # Buffer de escritura bloqueado, se almacena aquí cuando el lock está activo
+        self._wlock = False  # Bloquear el buffer de escritura
+        self._wlockbuf = b''  # Buffer de escritura bloqueada
 
     def _handShake(self):
-        """Crea un handshake y lo guarda en las variables antes de enviarlo a la conexión"""
-        self._headers = (
-            "GET / HTTP/1.1\r\n"
-            "Host: {}:{}\r\n"
-            "Origin: {}\r\n"
-            "Connection: Upgrade\r\n"
-            "Upgrade: websocket\r\n"
-            "Sec-WebSocket-Key: {}\r\n"
-            "Sec-WebSocket-Version: {}\r\n"
-            "\r\n").format(self._server, self._port, self._origin, WS.genseckey(), WS.VERSION).encode()
+        """
+        Crea un handshake y lo guarda en las variables antes de enviarlo a
+        la conexión
+        """
+        self._headers = ("GET / HTTP/1.1\r\n"
+                         "Host: {}:{}\r\n"
+                         "Origin: {}\r\n"
+                         "Connection: Upgrade\r\n"
+                         "Upgrade: websocket\r\n"
+                         "Sec-WebSocket-Key: {}\r\n"
+                         "Sec-WebSocket-Version: {}\r\n"
+                         "\r\n").format(self._server, self._port, self._origin,
+                                        WS.genseckey(), WS.VERSION).encode()
         self._wbuf = self._headers
         self._setWriteLock(True)
         self._pingTask = self.mgr.setInterval(self.PINGINTERVAL, self.ping)
@@ -1120,15 +1168,17 @@ class WSConnection:
         cmd, args = data[0], data[1:]
         func = "_rcmd_" + cmd
         if hasattr(self, func):
-            try:  # TODO no se supone que ocurran, si lo hacen hay que revisar el proceso
+            try:
                 getattr(self, func)(args)
             except Exception as e:
                 self._callEvent('onProcessError', func, e)
-                print('[%s][%s] ERROR ON PROCESS "%s" "%s"' % (time.strftime('%I:%M:%S %p'), self.name, func, e),
+                print('[%s][%s] ERROR ON PROCESS "%s" "%s"' % (
+                    time.strftime('%I:%M:%S %p'), self.name, func, e),
                       file = sys.stderr)
         elif debug:
-            print('[{}][{:^10.10}]UNKNOWN DATA "{}"'.format(time.strftime('%I:%M:%S %p'), self.name, ':'.join(data)),
-                  file = sys.stderr)
+            print('[{}][{:^10.10}]UNKNOWN DATA "{}"'.format(
+                    time.strftime('%I:%M:%S %p'), self.name, ':'.join(data)),
+                    file = sys.stderr)
 
     def _messageFormat(self, msg: str, html: bool):
         if len(msg) + msg.count(' ') * 5 > self.MAXLEN:
@@ -1140,37 +1190,50 @@ class WSConnection:
                 particion = self.MAXLEN
                 conteo = 0
                 while espacios * 6 + particion > self.MAXLEN:
-                    particion = len(msg[:particion - espacios])  # Recorrido máximo 5
-                    espacios = msg[:particion].count(' ') + msg[:particion].count('\t')
+                    particion = len(
+                            msg[:particion - espacios])  # Recorrido máximo 5
+                    espacios = msg[:particion].count(' ') + msg[
+                                                            :particion].count(
+                            '\t')
                     conteo += 1
-                print(conteo)
-                return self._messageFormat(msg[:particion], html) + self._messageFormat(msg[particion:], html)
+                print(conteo)  # TODO eliminar variable
+                return self._messageFormat(msg[:particion],
+                                           html) + self._messageFormat(
+                        msg[particion:], html)
         fc = self.user.fontColor.lower()
         nc = self.user.nameColor
         if not html:
             msg = html2.escape(msg, quote = False)
         msg = msg.replace('\n', '\r').replace('~', '&#126;')
         for x in 'b i u'.split():
-            msg = msg.replace('<%s>' % x, '<%s>' % x.upper()).replace('</%s>' % x, '</%s>' % x.upper())
+            msg = msg.replace('<%s>' % x, '<%s>' % x.upper()).replace(
+                    '</%s>' % x, '</%s>' % x.upper())
         # TODO comprobar  velocidad comparado con el otro
-        # msg = msg.replace("<b>", "<B>").replace("</b>", "</B>").replace("<i>", "<I>").replace("</i>", "</I>").replace(
+        # msg = msg.replace("<b>", "<B>").replace("</b>", "</B>").replace(
+        # "<i>", "<I>").replace("</i>", "</I>").replace(
         #         "<u>", "<U>").replace("</u>", "</U>")
         if self.name == 'PM':
             formt = '<n{}/><m v="1"><g x{:0>2.2}s{}="{}">{}</g></m>'
-            fc = '{:X}{:X}{:X}'.format(*tuple(round(int(fc[i:i + 2], 16) / 17) for i in (0, 2, 4))).lower() if len(
-                    fc) == 6 else fc[:3].lower()
+            fc = '{:X}{:X}{:X}'.format(*tuple(
+                    round(int(fc[i:i + 2], 16) / 17) for i in
+                    (0, 2, 4))).lower() if len(fc) == 6 else fc[:3].lower()
             msg = msg.replace('&nbsp;', ' ')  # fix
             msg = convertPM(msg)  # TODO No ha sido completamente probado
         else:  # Room
-            msg = msg.replace('\t', '&nbsp;' * 3 + ' ').replace('   ', ' ' + '&nbsp;' + ' ')  # TODO 3 en adelante
+            msg = msg.replace('\t', '&nbsp;' * 3 + ' ').replace('   ',
+                                                                ' ' +
+                                                                '&nbsp;' + ' ')  # TODO 3 en adelante
             formt = '<n{}/><f x{:0>2.2}{}="{}">{}'
-            if self.user.isanon:  # El color del nombre es el tiempo de conexión y no hay fuente
+            if self.user.isanon:
+                # El color del nombre es el tiempo de conexión y no hay fuente
                 nc = str(self._connectiontime).split('.')[0][-4:]
                 formt = '<n{0}/>{4}'
 
         if type(msg) != list:
             msg = [msg]
-        return [formt.format(nc, str(self.user.fontSize), fc, self.user.fontFace, unimsg) for unimsg in msg]
+        return [
+            formt.format(nc, str(self.user.fontSize), fc, self.user.fontFace,
+                         unimsg) for unimsg in msg]
 
     def onData(self, data: bytes):
         """
@@ -1184,9 +1247,8 @@ class WSConnection:
             esperada = WS.getServerSeckey(self._headers)
             if clave != esperada and debug:
                 if debug:
-                    print(
-                            'Un proxy ha enviado una respuesta en caché',
-                            file = sys.stderr)
+                    print('Un proxy ha enviado una respuesta en caché',
+                          file = sys.stderr)
             self._setWriteLock(False)
             self._login()
         else:
@@ -1194,14 +1256,18 @@ class WSConnection:
             while r:  # Comprobar todos los frames en el buffer de lectura
                 frame = self._rbuf[:r]
                 self._rbuf = self._rbuf[r:]
-                info = WS.frameInfo(frame)  # Información sobre el frame recibido
+                # Información sobre el frame recibido
+                info = WS.frameInfo(frame)
                 payload = WS.getPayload(frame)
-                if info.opcode == WS.CLOSE:  # El servidor quiere cerrar la conexión
-                    pass  # self._
-                elif info.opcode == WS.TEXT:  # El frame contiene datos
+                if info.opcode == WS.CLOSE:
+                    # El servidor quiere cerrar la conexión
+                    pass  # TODO detectar este caso
+                elif info.opcode == WS.TEXT:
+                    # El frame contiene datos
                     self._process(payload)
                 elif debug:
-                    print('Frame no controlado: "{}"'.format(payload), file = sys.stderr)
+                    print('Frame no controlado: "{}"'.format(payload),
+                          file = sys.stderr)
                 r = WS.checkFrame(self._rbuf)
 
     def ping(self):
@@ -1247,13 +1313,15 @@ class WSConnection:
         """Al recibir un pong"""
         self._callEvent('onPong')
 
-    def _rcmd_premium(self, args):  # TODO el tiempo mostrado usa la hora del server
+    def _rcmd_premium(self, args):
+        # TODO el tiempo mostrado usa la hora del server
         # TODO usar args para definir el estado premium y el tiempo
-        if self._bgmode and (args[0] == '210' or (isinstance(self, Room) and self._owner == self.user)):
+        if self._bgmode and (args[0] == '210' or (
+                isinstance(self, Room) and self._owner == self.user)):
             self._sendCommand('msgbg', str(self._bgmode))
 
     def _rcmd_show_fw(self, args = None):
-        """Comando sin argumentos que manda una advertencia de flood en sala/pm"""
+        """Sin argumentos, manda una advertencia de flood en sala/pm"""
         self._callEvent('onFloodWarning')
 
 
@@ -1263,7 +1331,9 @@ class PM(WSConnection):
     """
 
     def __dir__(self):
-        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
+        return [x for x in
+                set(list(self.__dict__.keys()) + list(dir(type(self)))) if
+                x[0] != '_']
 
     def __init__(self, mgr, name, password):
         """
@@ -1273,15 +1343,14 @@ class PM(WSConnection):
         @param name: Nombre del usuario
         @param password: Contraseña para la conexión
         """
-        super().__init__(name=name, password=password)
-        self._auth_re = re.compile(
-            r"auth\.chatango\.com ?= ?([^;]*)", re.IGNORECASE
-        )
+        super().__init__(name = name, password = password)
+        self._auth_re = re.compile(r"auth\.chatango\.com ?= ?([^;]*)",
+                                   re.IGNORECASE)
         self._blocklist = set()
         self._contacts = set()
         self._name = 'PM'
         self._currentname = name
-        # TODO cuando la conexión a un puerto falla, se puede aumentar en uno hasta cierto límte
+        # TODO Si el puerto falla, aumentar en uno hasta cierto límte
         self._port = 8080
         self._server = 'c1.chatango.com'
         # self._server = 'i0.chatango.com'  # TODO
@@ -1290,6 +1359,7 @@ class PM(WSConnection):
         if self.mgr:
             self._bgmode = int(self.mgr.bgmode)
             self.connect()
+        self._trackqueue = queue.Queue()
 
     @property
     def blocklist(self):
@@ -1320,9 +1390,7 @@ class PM(WSConnection):
         @return: auid
         """
         data = {
-            "user_id":     name,
-            "password":    password,
-            "storecookie": "on",
+            "user_id":     name, "password": password, "storecookie": "on",
             "checkerrors": "yes"
             }
         resp = WS.RPOST("http://chatango.com/login", data)
@@ -1340,12 +1408,12 @@ class PM(WSConnection):
 
     def _login(self):
         # TODO el 2 es la versión del cliente
-        __reg2 = ["tlogin", self._getAuth(self.mgr.name, self.mgr.password), "2"]
-        if not __reg2[1]:
+        r2 = ["tlogin", self._getAuth(self.mgr.name, self.mgr.password), "2"]
+        if not r2[1]:
             self._callEvent("onLoginFail")
             self.disconnect()
             return False
-        self._sendCommand(*__reg2)
+        self._sendCommand(*r2)
 
     def addContact(self, user: str):  # TODO
         """add contact"""
@@ -1375,9 +1443,24 @@ class PM(WSConnection):
         if user in self._blocklist:
             self._sendCommand("unblock", user.name)
 
-    def track(self, user):  # TODO
-        """get and store status of person for future use"""
-        self._sendCommand("track", user.name)
+    def track(self, user):
+        """
+        Obtener y almacenar el estado de un usuario
+        @param user: str o User - Usuario
+        @return: [laston,ison,status]
+        """
+        if type(user) == User:
+            user = user.name
+        self._sendCommand('track', user)
+        try:
+            res = [None] * 3
+            # TODO si esto falla habrán resultados huérfanos
+            # TODO esto debe ejecutarse en otro thread obligatoriamente
+            with self.mgr.connlock:
+                res = self._trackqueue.get(timeout = 5)
+            return res
+        except:
+            return [None] * 3
 
     def checkOnline(self, user):  # TODO
         """return True if online, False if offline, None if unknown"""
@@ -1387,7 +1470,10 @@ class PM(WSConnection):
             return None
 
     def getIdle(self, user):  # TODO
-        """return last active time, time.time() if isn't idle, 0 if offline, None if unknown"""
+        """
+        Return last active time, time.time() if isn't idle, 0 if offline,
+        None if unknown
+        """
         if user not in self._status:
             return None
         if not self._status[user][1]:
@@ -1400,7 +1486,7 @@ class PM(WSConnection):
     def message(self, user, msg, html: bool = False):
         """
         Enviar un pm a un usuario
-        @param html: Indica si se permite código html en el contenido del mensaje
+        @param html: Indica si se permite código html en el mensaje
         @param user: Usuario al que enviar el mensaje
         @param msg: Mensaje que se envia (string)
         """
@@ -1450,7 +1536,7 @@ class PM(WSConnection):
         if not name:
             name = args[2]  # Anon es unknown
         user = User(name)  # Usuario
-        mtime = float(args[3]) - self._correctiontime  # 1530420101.72 Time TODO corregir el tiempo
+        mtime = float(args[3]) - self._correctiontime
         unknown2 = args[4]  # 0 TODO what is this?
         rawmsg = ':'.join(args[5:])  # Mensaje
         body, n, f = _clean_message(rawmsg, pm = True)
@@ -1492,11 +1578,7 @@ class PM(WSConnection):
                 puid = None,
                 raw = rawmsg,
                 room = self,
-                time = mtime,
-                unid = None,
-                unknown2 = unknown2,
-                user = user
-                )
+                time = mtime, unid = None, unknown2 = unknown2, user = user)
         self._callEvent("onPMOfflineMessage", user, msg)
 
     def _rcmd_reload_profile(self, args):  # TODO completar
@@ -1516,7 +1598,7 @@ class PM(WSConnection):
         pass
 
     def _rcmd_time(self, args):
-        """Se recibe el tiempo del servidor y se calcula el valor de correccion"""
+        """Recibir tiempo del server y corregirlo"""
         self._connectiontime = args[0]
         self._correctiontime = float(self._connectiontime) - time.time()
 
@@ -1544,7 +1626,8 @@ class PM(WSConnection):
             elif idle == '0':
                 self._status[user] = [int(last_on), True, 0]
             else:
-                self._status[user] = [int(last_on), True, time.time() - int(idle) * 60]
+                self._status[user] = [int(last_on), True,
+                                      time.time() - int(idle) * 60]
             self._contacts.add(user)
         self._callEvent("onPMContactlistReceive")
 
@@ -1572,12 +1655,15 @@ class PM(WSConnection):
 
 class Room(WSConnection):
     """
-    Base para manejar las conexiones con las salas. Hereda de WSConnection y tiene todas
-    sus propiedades
+    Base para manejar las conexiones con las salas. Hereda de WSConnection y
+    tiene todas sus propiedades
     """
     _BANDATA = namedtuple('BanData', ['unid', 'ip', 'target', 'time', 'src'])
+
     def __dir__(self):
-        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
+        return [x for x in
+                set(list(self.__dict__.keys()) + list(dir(type(self)))) if
+                x[0] != '_']
 
     def __init__(self, name: str, mgr: object = None, account: tuple = None):
         # TODO , server = None, port = None, uid = None):
@@ -1588,7 +1674,8 @@ class Room(WSConnection):
         self._channel = 0
         self._currentaccount = account
         self._currentname = account[0]
-        self._maxHistoryLength = Gestor.maxHistoryLength  # Por que no guardar una configuración de esto por sala
+        # Por que no guardar una configuración de esto por sala?
+        self._maxHistoryLength = Gestor.maxHistoryLength
         # Datos del chat
         self._announcement = [0, 0, '']  # Estado, Tiempo, Texto
         self._banlist = dict()  # Lista de usuarios baneados
@@ -1612,7 +1699,8 @@ class Room(WSConnection):
         self._unbanlist = dict()
         self._unbanqueue = deque(maxlen = 500)
         self._user = None
-        self._users = deque()  # TODO reemplazar userlist con userdict y userhistory
+        self._users = deque()
+        # TODO reemplazar userlist con userdict y userhistory
         self._userdict = dict()  # TODO {ssid:{user},}
         self._userhistory = deque(maxlen = 10)  # TODO {{time: <user>},}
         # self.user_id = None TODO
@@ -1639,7 +1727,8 @@ class Room(WSConnection):
     @property
     def alluserlist(self):
         """Lista de todos los usuarios en la sala, incluyendo anons"""
-        return sorted(list(x[1] for x in self._userdict.values()), key = lambda x: x.name.lower())
+        return sorted([x[1] for x in list(self._userdict.values())],
+                      key = lambda z: z.name.lower())
 
     @property
     def allusernames(self):
@@ -1696,6 +1785,18 @@ class Room(WSConnection):
     @property
     def info(self):
         """Información de la sala, una lista [titulo,información]"""
+        if self._info:
+            return self._info
+        url = 'http://fp.chatango.com/profileimg' + link + 'mod1.xml'
+        try:
+            mixml = ET.fromstring(urlreq.urlopen(url).read().decode('utf-8'))
+        except:
+            return User._INFO(None, None, None, None, None)
+        buscar = 'body s b l d'
+        encontrado = []
+        for x in buscar.split():
+            encontrado.append(mixml.findtext(x, ''))
+        self._info = User._INFO(*encontrado)
         return self._info
 
     @property
@@ -1739,8 +1840,6 @@ class Room(WSConnection):
         """
         return self._silent
 
-
-
     @property
     def unbanlist(self):
         return list(set(x.target.name for x in self._unbanqueue))
@@ -1756,8 +1855,10 @@ class Room(WSConnection):
 
     @property
     def userlist(self):
-        """Lista de usuarios en la sala, por defecto muestra todos los usuarios (no anons) sin incluir sesiones
-        extras"""
+        """
+        Lista de usuarios en la sala, por defecto muestra todos los
+        usuarios (no anons) sin incluir sesiones extras
+        """
         return self._getUserlist()
 
     @property
@@ -1774,7 +1875,10 @@ class Room(WSConnection):
 
     @property
     def usernames(self):
-        """Nombres de usuarios en la sala. Por defecto usado los valores de userlist"""
+        """
+        Nombres de usuarios en la sala. Por defecto usado los valores de
+        userlist
+        """
         return [x.name for x in self.userlist]
 
     @property
@@ -1790,9 +1894,11 @@ class Room(WSConnection):
         @return: list[tuple,tuple,...]
         """
         if mode < 2:
-            return [(x.name if mode else x, len(x.getSessionIds(self))) for x in self._getUserlist(1, memory)]
+            return [(x.name if mode else x, len(x.getSessionIds(self))) for x in
+                    self._getUserlist(1, memory)]
         else:
-            return [(x.showname, len(x.getSessionIds(self))) for x in self._getUserlist(1, memory)]
+            return [(x.showname, len(x.getSessionIds(self))) for x in
+                    self._getUserlist(1, memory)]
 
     def _addHistory(self, msg):
         """
@@ -1804,19 +1910,21 @@ class Room(WSConnection):
             rest.detach()
         self._history.append(msg)
 
-    def _getUserlist(self, unique = True, memory = 0, anons = False):  # TODO Revisar
+    def _getUserlist(self, unique = True, memory = 0, anons = False):
         """
         Regresa una lista con los nombres de usuarios en la sala
         @param unique: bool indicando si la lista es única
-        @param memory: int indicando que tan atrás se verá en el historial de mensajes
+        @param memory: int indicando que tan atrás se verá en el historial
         @param anons: bool indicando si se regresarán anons entre los usuarios
         @return: list
         """
         ul = []
         if not memory:
-            ul = [x[1] for x in self._userdict.values() if anons or not x[1].isanon]
+            ul = [x[1] for x in self._userdict.values() if
+                  anons or not x[1].isanon]
         elif type(memory) == int:
-            ul = set(map(lambda x: x.user, list(self._history)[min(-memory, len(self._history)):]))
+            ul = set(map(lambda x: x.user, list(self._history)[
+                                           min(-memory, len(self._history)):]))
         if unique:
             ul = set(ul)
         return sorted(list(ul), key = lambda x: x.name.lower())
@@ -1824,16 +1932,19 @@ class Room(WSConnection):
     ####################
     # Comandos de la sala
     ####################
-    def addMod(self, user, powers = '82368'):  # TODO los poderes serán recibidos de modflags
+    def addMod(self, user, powers = '82368'):
         """
         Agrega un moderador nuevo a la sala con los poderes básicos
         @param user: str. Usuario que será mod
         @param powers: Poderes del usuario mod, un string con números
         @return: bool indicando si se hará o no
         """
+        # TODO los poderes serán recibidos de modflags
         if isinstance(user, User):
             user = user.name
-        if self.user == self.owner or (self.user in self.mods and self.modflags.get(self.user.name).EDIT_MODS):
+        if self.user == self.owner or (
+                self.user in self.mods and self.modflags.get(
+                self.user.name).EDIT_MODS):
             self._sendCommand('addmod:{}:{}'.format(user, powers))
             return True
         return False
@@ -1858,7 +1969,9 @@ class Room(WSConnection):
 
     def clearall(self):  # TODO
         """Borra todos los mensajes"""
-        if self.user == self._owner or self._user in self._mods and self._mods.get(self._user).EDIT_GROUP:
+        if self.user == self._owner or self._user in self._mods and \
+                self._mods.get(
+                self._user).EDIT_GROUP:
             self._sendCommand("clearall")
             return True
         else:
@@ -1908,9 +2021,9 @@ class Room(WSConnection):
         """Obtener el último mensaje de un usuario en una sala"""
         if not user:
             user = self._user
-        if isinstance(user, str):
-            user = User(user)
-        msg = [msg for msg in reversed(self._history) if msg.user == user]  # TODO hacerlo sin crear nuevo usuario
+        if isinstance(user, User):
+            user = user.name
+        msg = [msg for msg in reversed(self._history) if msg.user.name == user]
         if msg:
             return msg[0]
         return None
@@ -1931,7 +2044,8 @@ class Room(WSConnection):
     def login(self, uname = None, password = None, account = None):
         # if account: TODO login aunque tenga otra cuenta conectada?
         #    self
-        # , self.name, _genUid(), self._currentaccount[0], self._currentaccount[1]]  # TODO comando
+        # , self.name, _genUid(), self._currentaccount[0],
+        # self._currentaccount[1]]  # TODO comando
         # self._currenname = self._currentaccount[0]
         if not account:
             account = [self._currentaccount[0], self._currentaccount[1]]
@@ -1940,7 +2054,8 @@ class Room(WSConnection):
             if password:
                 account[1] = password
         if isinstance(account, str):
-            cuenta = {k.lower(): [k, v] for k, v in self.mgr._accounts}.get(account.lower(), self.mgr._accounts[0])
+            cuenta = {k.lower(): [k, v] for k, v in self.mgr._accounts}.get(
+                    account.lower(), self.mgr._accounts[0])
             cuenta[0] = account  # Poner el nombre tal cual
             account = cuenta
             self._currentaccount = [account[0], account[1]]
@@ -1956,9 +2071,10 @@ class Room(WSConnection):
         TODO cola de mensajes
         Envía un mensaje
         @param msg: (str) Mensaje a enviar(str)
-        @param html: (bool) Si se habilitarán los carácteres html, en caso contrario se reemplazarán los carácteres
-        especiales
-        @param canal: el número del canal. del 0 al 4 son normal,rojo,azul,azul+rojo,mod
+        @param html: (bool) Si se habilitarán los carácteres html, en caso
+        contrario se reemplazarán los carácteres especiales
+        @param canal: el número del canal. del 0 al 4 son normal,rojo,azul,
+        azul+rojo,mod
         @param badge: (int) Insignia del mensaje
         """
         if canal is None:
@@ -1990,10 +2106,13 @@ class Room(WSConnection):
     def setBannedWords(self, part = '', whole = ''):  # TODO documentar
         """
         Actualiza las palabras baneadas para que coincidan con las recibidas
-        @param part: Las partes de palabras que serán baneadas (separadas por coma, 4 carácteres o más)
-        @param whole: Las palabras completas que serán baneadas, (separadas por coma, cualquier tamaño)
+        @param part: Las partes de palabras que serán baneadas (separadas por
+        coma, 4 carácteres o más)
+        @param whole: Las palabras completas que serán baneadas, (separadas
+        por coma, cualquier tamaño)
         """
-        self._sendCommand('setbannedwords', urlreq.quote(part), urlreq.quote(whole))
+        self._sendCommand('setbannedwords', urlreq.quote(part),
+                          urlreq.quote(whole))
 
     def setRecordingMode(self, modo):
         self._recording = int(modo)
@@ -2018,9 +2137,12 @@ class Room(WSConnection):
 
     def updateBannedWords(self, part = '', whole = ''):
         """
-        Actualiza las palabras baneadas agregando las indicadas, ambos parámetros son opcionales
-        @param part: Las partes de palabras que serán agregadas (separadas por coma,4 carácteres o más)
-        @param whole: Las palabras completas que serán agregadas, (separadas por coma, cualquier tamaño)
+        Actualiza las palabras baneadas agregando las indicadas,
+        ambos parámetros son opcionales
+        @param part: Las partes de palabras que serán agregadas (separadas
+        por coma,4 carácteres o más)
+        @param whole: Las palabras completas que serán agregadas, (separadas
+        por coma, cualquier tamaño)
         @return: bool TODO, comprobar si se dispone el nivel para el cambio
         """
         self._bwqueue = '%s:%s' % (part, whole)
@@ -2031,9 +2153,11 @@ class Room(WSConnection):
             if self.flags and flag in dir(self.flags):
                 if flag in GroupFlags:
                     if enabled:
-                        self._sendCommand("updategroupflags", str(GroupFlags[flag]), '0')
+                        self._sendCommand("updategroupflags",
+                                          str(GroupFlags[flag]), '0')
                     else:
-                        self._sendCommand("updategroupflags", '0', str(GroupFlags[flag]))
+                        self._sendCommand("updategroupflags", '0',
+                                          str(GroupFlags[flag]))
                     return True
         return False
 
@@ -2041,19 +2165,20 @@ class Room(WSConnection):
         title = title or self._info[0]
         info = info or self._info[1]
         data = {
-            "erase":  0, "l": 1, "d": info, "n": title, "u": self.name, "lo": self._currentaccount[0],
-            "p":      self._currentaccount[1],
+            "erase":  0, "l": 1, "d": info, "n": title, "u": self.name,
+            "lo":     self._currentaccount[0], "p": self._currentaccount[1],
             "origin": "st.chatango.com",
             }
         if WS.RPOST("http://chatango.com/updategroupprofile", data):
             return True
         return False
 
-    def updateMod(self, user: str, powers: str = '82368', enabled = None):  # TODO
+    def updateMod(self, user: str, powers: str = '82368', enabled = None):
         """
         Actualiza los poderes de un moderador
         @param user: Moderador al que se le actualizarán los privilegios
-        @param powers: Poderes nuevos del mod. Si no se proporcionan se usarán los básicos
+        @param powers: Poderes nuevos del mod. Si no se proporcionan se
+        usarán los básicos
         @param enabled: bool indicando si los poderes están activados o no
         @return:
         """
@@ -2061,7 +2186,8 @@ class Room(WSConnection):
         if isinstance(user, User):  # TODO externalizar
             user = user.name
 
-        if user not in self.modflags or (self.user not in self.mods and self.user != self.owner):
+        if user not in self.modflags or (
+                self.user not in self.mods and self.user != self.owner):
             return False
 
         if isinstance(powers, str) and not powers.isdigit():
@@ -2077,18 +2203,14 @@ class Room(WSConnection):
                 powers = start > powers and start ^ powers or start
         else:
             return False
-
-        # print(powers)  # TODO quitar esta variable
-        # if powers and self.user in self.modflags and self.modflags.get(self.user.name):
         self._sendCommand('updmod:{}:{}'.format(user, powers))
         return True
-        # else:
-        #    return False
 
-    def updateBg(self, bgc = '', ialp = '100', useimg = '0', bgalp = '100', align = 'tl', isvid = '0', tile = '0',
-                 bgpic = None):
+    def updateBg(self, bgc = '', ialp = '100', useimg = '0', bgalp = '100',
+                 align = 'tl', isvid = '0', tile = '0', bgpic = None):
         """
-        TODO ADVERTENCIA, está en fase de pruebas y sigue sujeto a cambios. usar bajo su propio riesgo
+        TODO ADVERTENCIA, está en fase de pruebas y sigue sujeto a cambios.
+        usar bajo su propio riesgo
         @param bgpic: Imagen de bg. si se envía se ignora lo demás.
         @param bgc: Color del bg Hexadecimal
         @param ialp: Opacidad de la imagen
@@ -2100,38 +2222,37 @@ class Room(WSConnection):
         @return: bool indicando exito o fracaso
         """
         data = {
-            "lo":     self._currentaccount[0],
-            "p":      self._currentaccount[1],
-            "bgc":    bgc,
-            "ialp":   ialp,
-            "useimg": useimg,
-            "bgalp":  bgalp,
-            "align":  align,
-            "isvid":  isvid,
-            "tile":   tile,
-            'hasrec': '0'
+            "lo":    self._currentaccount[0], "p": self._currentaccount[1],
+            "bgc":   bgc, "ialp": ialp, "useimg": useimg, "bgalp": bgalp,
+            "align": align, "isvid": isvid, "tile": tile, 'hasrec': '0'
             }
         headers = None
         if bgpic:
             data = {
-                "lo": self._currentaccount[0],
-                "p":  self._currentaccount[1]
+                "lo": self._currentaccount[0], "p": self._currentaccount[1]
                 }
             if bgpic.startswith("http:") or bgpic.startswith("https:"):
                 archivo = urlreq.urlopen(bgpic)
             else:
                 archivo = open(bgpic, 'rb')
-            files = {'Filedata': {'filename': bgpic, 'content': archivo.read().decode('latin-1')}}
+            files = {
+                'Filedata': {
+                    'filename': bgpic,
+                    'content':  archivo.read().decode('latin-1')
+                    }
+                }
             data, headers = WS.encode_multipart(data, files)
-            headers.update({"host": "chatango.com", "origin": "http://st.chatango.com"})
+            headers.update({
+                "host": "chatango.com", "origin": "http://st.chatango.com"
+                })
         if WS.RPOST("http://chatango.com/updatemsgbg", data, headers):
             self._sendCommand("miu")
             return True
         else:
             return False
 
-    def updateProfile(self, age = '', gender = '', country = '', about = '', fullpic = None,
-                      show = False, **kw):
+    def updateProfile(self, age = '', gender = '', country = '', about = '',
+                      fullpic = None, show = False, **kw):
         """
         TODO sacar la parte del archivo
         TODO eliminar la variable **kw
@@ -2141,7 +2262,8 @@ class Room(WSConnection):
         @param gender: Género
         @param country: Nombre del país
         @param about: Acerca de mí
-        @param fullpic: Dirección de una imagen(local o web). Si se envia esto se ignorará lo demás.
+        @param fullpic: Dirección de una imagen(local o web). Si se envia
+        esto se ignorará lo demás.
         @param show: Mostrar el perfil en la lista pública
         @return: True o False
         """
@@ -2158,10 +2280,18 @@ class Room(WSConnection):
             else:
                 archivo = open(fullpic, 'rb')
             data.update({'action': 'fullpic'})
-            files = {'Filedata': {'filename': fullpic, 'content': archivo.read().decode('latin-1')}}
+            files = {
+                'Filedata': {
+                    'filename': fullpic,
+                    'content':  archivo.read().decode('latin-1')
+                    }
+                }
             data, headers = WS.encode_multipart(data, files)
-            headers.update({"host": "chatango.com", "origin": "http://st.chatango.com"})
-        if WS.RPOST("http://chatango.com/updateprofile", data, headers = headers):
+            headers.update({
+                "host": "chatango.com", "origin": "http://st.chatango.com"
+                })
+        if WS.RPOST("http://chatango.com/updateprofile", data,
+                    headers = headers):
             return True
         else:
             return False
@@ -2170,33 +2300,39 @@ class Room(WSConnection):
         """
         TODO sacar la parte del archivo
         Sube una imagen al servidor y regresa el número
-        @param img: url de una imagen (local o web). También puede ser un archivo de bytes con la propiedad read()
+        @param img: url de una imagen (local o web). También puede ser un
+        archivo de bytes con la propiedad read()
         @param url: Indica si retornar una url o solo el número. Defecto(False)
         @return: string con url o número de la imagen
         """
         data = {
-            'u': self._currentaccount[0],
-            'p': self._currentaccount[1]
+            'u': self._currentaccount[0], 'p': self._currentaccount[1]
             }
-        if type(img) == str and (img.startswith("http:") or img.startswith("https:")):
+        if type(img) == str and (
+                img.startswith("http:") or img.startswith("https:")):
             archivo = urlreq.urlopen(img).read()
         elif type(img) == str:
             archivo = open(img, 'rb').read()
         else:
             archivo = img.read()
-        files = {'filedata': {'filename': img, 'content': archivo.decode('latin-1')}}
+        files = {
+            'filedata': {'filename': img, 'content': archivo.decode('latin-1')}
+            }
         files['filedata'].update(**kw)
         if hasattr(archivo, 'close'):
             archivo.close()
         data, headers = WS.encode_multipart(data, files)
-        headers.update({"host": "chatango.com", "origin": "http://st.chatango.com"})
+        headers.update(
+                {"host": "chatango.com", "origin": "http://st.chatango.com"})
         res = WS.RPOST("http://chatango.com/uploadimg", data, headers = headers)
         if res:
             res = res.read().decode('utf-8')
             if 'success' in res:
-                if url:
-                    return "http://ust.chatango.com/um/%s/%s/%s/img/t_%s.jpg" % (
-                        self.user.name[0], self.user.name[1], self.user.name, res.split(':', 1)[1])
+                if url:  # TODO
+                    return "http://ust.chatango.com/um/%s/%s/%s/img/t_%s.jpg" \
+                           % (
+                        self.user.name[0], self.user.name[1], self.user.name,
+                        res.split(':', 1)[1])
                 else:
                     return res.split(':', 1)[1]
         return False
@@ -2211,14 +2347,17 @@ class Room(WSConnection):
             return self._banlist[User(user)]
         return None
 
-    def _login(self, uname = None, password = None):  # TODO, Name y password no shilven
+    def _login(self, uname = None, password = None):
         """
-        Autenticar. Logearse como uname con password. En caso de no haber ninguno usa la _currentaccount
+        Autenticar. Logearse como uname con password. En caso de no haber
+        ninguno usa la _currentaccount
         @param uname: Nombre del usuario (string)
         @param password: Clave del usuario (string)
         @return:
         """
-        __reg2 = ["bauth", self.name, _genUid(), self._currentaccount[0], self._currentaccount[1]]  # TODO comando
+        # TODO, Name y password no shilven
+        __reg2 = ["bauth", self.name, _genUid(), self._currentaccount[0],
+                  self._currentaccount[1]]  # TODO comando
         self._currenname = self._currentaccount[0]
         self._sendCommand(*__reg2)
 
@@ -2231,8 +2370,8 @@ class Room(WSConnection):
 
     def requestBanlist(self):  # TODO revisar
         self._sendCommand('blocklist', 'block',
-                          str(int(time.time() + self._correctiontime)),
-                          'next', '500', 'anons', '1')
+                          str(int(time.time() + self._correctiontime)), 'next',
+                          '500', 'anons', '1')
 
     def rawBan(self, unid, ip, name):  # TODO documentar
         self._sendCommand("block", unid, ip, name)
@@ -2242,23 +2381,28 @@ class Room(WSConnection):
 
     def requestUnBanlist(self):
         self._sendCommand('blocklist', 'unblock',
-                          str(int(time.time() + self._correctiontime)),
-                          'next', '500', 'anons', '1')
+                          str(int(time.time() + self._correctiontime)), 'next',
+                          '500', 'anons', '1')
 
-    def setAnnouncement(self, anuncio = None, tiempo = 0, enabled = True):  # TODO activar o desactivar solamente
+    def setAnnouncement(self, anuncio = None, tiempo = 0,
+                        enabled = True):  # TODO activar o desactivar solamente
         """Actualiza el anuncio por el indicado
         @param anuncio: El anuncio nuevo
         @param tiempo: Cada cuanto enviar el anuncio, en segundos (minimo 60)
         @param enabled: Si el anuncio está activado o desactivado (defecto True)
-        Si solo se manda enabled, se cambia con el anuncio que ya estaba en la sala"""
+        Si solo se manda enabled, se cambia con el anuncio que ya estaba en
+        la sala"""
         if self.owner != self.user and (
-                self.user not in self.mods or not self.modflags.get(self.user.name).EDIT_GP_ANNC):
+                self.user not in self.mods or not self.modflags.get(
+                self.user.name).EDIT_GP_ANNC):
             return False
         if anuncio is None:
             self._announcement[0] = int(enabled)
-            self._sendCommand('updateannouncement', int(enabled), *self._announcement[1:])
+            self._sendCommand('updateannouncement', int(enabled),
+                              *self._announcement[1:])
         else:
-            self._sendCommand('updateannouncement', int(enabled), tiempo, anuncio)
+            self._sendCommand('updateannouncement', int(enabled), tiempo,
+                              anuncio)
         return True
 
     ####################
@@ -2278,7 +2422,7 @@ class Room(WSConnection):
 
     def _rcmd_b(self, args):  # TODO reducir  y unificar con rcmd_i
         # TODO el reconocimiento de otros bots en anon está incompleto
-        mtime = float(args[0]) - self._timecorrection  # Hora de envío del mensaje
+        mtime = float(args[0]) - self._timecorrection
         name = args[1]  # Nombre de usuario si lo hay
         tempname = args[2]  # Nombre del anon si no se ha logeado
         puid = args[3]  # Id del usuario Si no está no se debe procesar
@@ -2298,21 +2442,26 @@ class Room(WSConnection):
             ispremium = channel & 4 > 0
             hasbg = channel & 8 > 0
             if debug and (channel & 48 or channel & 3):  # TODO para depurar
-                pass  # TODO manipular información de los canales 1|2 (3) y 16|32(48)
+                pass  # TODO manipular información de los canales 1|2 (3) y
+                #  16|32(48)
             channel = ((channel & 2048) | (channel & 256)) | (
-                    channel & 35072)  # Se detectan 4 canales y sus combinaciones
+                    channel & 35072)  # Se detectan 4 canales y sus  #  #
+            # combinaciones
         body, n, f = _clean_message(rawmsg)
         if name == "":
             nameColor = None
             name = "#" + tempname
             if name == "#":
                 # name=[u.name for u in self.userlist if u.sessionids==p]
-                if n.isdigit():  # Hay anons con bots que envian malos mensajes y pueden producir fallos
+                if n.isdigit():
                     name = "!" + getAnonName(puid, n)
                 else:
+                    # Hay anons con bots que envian malos mensajes y pueden
+                    # producir fallos
                     # if debug:
                     #    print("Found bad message "+str(args),file=sys.stderr)
-                    return  # TODO en estos casos el mensaje no se muestra ni en el chat
+                    return  # TODO en estos casos el mensaje no se muestra ni
+                    #  en el chat
         else:
             if n:
                 nameColor = n
@@ -2358,6 +2507,10 @@ class Room(WSConnection):
         # 2 significa mal clave
         pass
 
+    def _rcmd_badupdate(self, args):  # TODO
+        # announcement
+        pass
+
     def _rcmd_blocked(self, args):  # TODO Que era todo esto?
         target = args[2] and User(args[2]) or ''
         user = args[3] and User(args[3]) or None
@@ -2367,7 +2520,8 @@ class Room(WSConnection):
             self._callEvent('onAnonBan', user, target)
         else:
             self._callEvent("onBan", user, target)
-        self._banlist[target] = self._BANDATA(args[0], args[1], target, float(args[4]), user)
+        self._banlist[target] = self._BANDATA(args[0], args[1], target,
+                                              float(args[4]), user)
 
     def _rcmd_blocklist(self, args):  # TODO
         self._banlist = dict()
@@ -2379,7 +2533,9 @@ class Room(WSConnection):
             if params[2] == "":
                 continue
             user = User(params[2])
-            self._banlist[user] = self._BANDATA(params[0], params[1], user, float(params[3]), User(params[4]))
+            self._banlist[user] = self._BANDATA(params[0], params[1], user,
+                                                float(params[3]),
+                                                User(params[4]))
         self._callEvent("onBanlistUpdate")
 
     def _rcmd_bw(self, args):  # Palabras baneadas en el chat
@@ -2392,8 +2548,7 @@ class Room(WSConnection):
         if hasattr(self, '_bwqueue'):
             self._bwqueue = [self._bwqueue.split(':', 1)[0] + ',' + args[0],
                              self._bwqueue.split(':', 1)[1] + ',' + args[1]]
-            self.setBannedWords(*self._bwqueue)
-        # TODO agregar un callEvent
+            self.setBannedWords(*self._bwqueue)  # TODO agregar un callEvent
 
     def _rcmd_clearall(self, args):  # TODO comentar
         self._callEvent("onClearall", args[0])
@@ -2405,7 +2560,8 @@ class Room(WSConnection):
             self._history.remove(msg)
             self._callEvent("onMessageDelete", msg.user, msg)
             msg.detach()
-        # Si hay menos de 20 mensajes pero el chat tiene más, por que no pedirle otros tantos?
+        # Si hay menos de 20 mensajes pero el chat tiene más, por que no
+        # pedirle otros tantos?
         if len(self._history) < 20 and not self._nomore:
             self._sendCommand('get_more:20:0')
 
@@ -2425,7 +2581,8 @@ class Room(WSConnection):
         pass
 
     def _rcmd_getannc(self, args):  # TODO falta rcmd
-        # <class 'list'>: ['3', 'pythonrpg', '5', '60', '<nE20/><f x1100F="1">hola']
+        # <class 'list'>: ['3', 'pythonrpg', '5', '60', '<nE20/><f
+        # x1100F="1">hola']
         # TODO que significa el tercer elemento?
         if len(args) < 4 or args[0] == 'none':
             return
@@ -2433,7 +2590,8 @@ class Room(WSConnection):
         if hasattr(self, '_ancqueue'):
             del self._ancqueue
             self._announcement[0] = args[0] == '0' and 3 or 0
-            self._sendCommand('updateannouncement', args[0] == '0' and '3' or '0', ':'.join(args[3:]))
+            self._sendCommand('updateannouncement', self._announcement[0],
+                              ':'.join(args[3:]))
 
     def _rcmd_g_participants(self, args):
         self._userdict = dict()
@@ -2461,7 +2619,7 @@ class Room(WSConnection):
             self._userdict[ssid] = [contime, user]
 
     def _rcmd_gparticipants(self, args):
-        """Comando viejo de chatango, ya no se usa, pero aún puede seguirlo enviando"""
+        """Comando viejo de chatango, ya no se usa, pero lo sigue enviando"""
         self._rcmd_g_participants(len(args) > 1 and args[1:] or '')
 
     def _rcmd_getpremium(self, args):
@@ -2471,11 +2629,10 @@ class Room(WSConnection):
 
     def _rcmd_gotmore(self, args):
         # TODO COMPROBAR ESTABILIDAD
-        num = args[0]
-        # if self._nomore and self._nomore < 6:
-        #   self._nomore = int(num) + 1
-        # if len(self._history) < self._history.maxlen and 0 < self._nomore < 6:
-        #   self._sendCommand("get_more:20:" + str(self._nomore))
+        num = args[0]  # if self._nomore and self._nomore < 6:  #
+        # self._nomore =  #  int(num) + 1  # if len(self._history) <
+        # self._history.maxlen and 0  #  < self._nomore < 6:  #
+        # self._sendCommand("get_more:20:" + str(  #  self._nomore))
 
     def _rcmd_groupflagsupdate(self, args):
         flags = args[0]
@@ -2503,10 +2660,13 @@ class Room(WSConnection):
             name = "#" + tname
             if name == "#":
                 # name=[u.name for u in self.userlist if u.sessionids==p]
-                if n.isdigit():  # Hay anons con bots que envian malos mensajes y pueden producir fallos
+                if n.isdigit():
                     name = "!" + getAnonName(puid, n)
                 else:
-                    return  # TODO En esos casos el mensaje no se muestra ni en el chat
+                    # Hay anons con bots que envian malos
+                    # mensajes y pueden producir fallos
+                    return  # TODO En esos casos el mensaje no se muestra ni
+                    #  en el chat
         else:
             if n:
                 nameColor = _parseNameColor(n)
@@ -2538,7 +2698,7 @@ class Room(WSConnection):
             self._callEvent("onHistoryMessage", user, msg)
 
     def _rcmd_inited(self, args):  # TODO
-        """Em el chat es solo para desactivar la animación de espera por conexión"""
+        """En el chat esto desactiva la animación de espera"""
         self._sendCommand("gparticipants")
         self._sendCommand("getpremium", "l")
         self._sendCommand('getannouncement')
@@ -2549,18 +2709,20 @@ class Room(WSConnection):
         else:
             self._callEvent("onReconnect")
         if args and debug:
-            print('New Unhandled arg on inited ', file = sys.stderr)
-        # comprobar el tamaño máximo del history y solicitar anteriores hasta llenar
-        # if len(self._history) < self._history.maxlen and not self._nomore:
-        #    self._sendCommand("get_more:20:" + str(self._waitingmore - 1))  # TODO revisar
+            print('New Unhandled arg on inited ', file = sys.stderr)  # comprobar el tamaño máximo del  #  # history y solicitar anteriores hasta llenar  # if len(  #  # self._history) < self._history.maxlen and not self._nomore:  #  #    self._sendCommand("get_more:20:" + str(self._waitingmore -  #  1))  # TODO revisar
 
-    def _rmd_logoutfirst(self, args):  # TODO al intentar iniciar sesión sin haber cerrado otra
+    def _rmd_logoutfirst(self, args):
+        # TODO al intentar iniciar sesión sin haber
+        # cerrado otra
         pass
 
     def _rcmd_logoutok(self, args):
         """Me he desconectado, ahora usaré mi nombre de anon"""
-        self._currentname = '!' + getAnonName(self._puid, str(self._connectiontime))
-        self._user = User(self._currentname, nameColor = str(self._connectiontime).split('.')[0][-4:])
+        self._currentname = '!' + getAnonName(self._puid,
+                                              str(self._connectiontime))
+        self._user = User(self._currentname,
+                          nameColor = str(self._connectiontime).split('.')[0][
+                                      -4:])
 
     def _rcmd_mods(self, args):  # TODO
         mods = dict()
@@ -2570,7 +2732,8 @@ class Room(WSConnection):
             mods[User(name)].isadmin = int(powers) & AdminFlags != 0
         premods = self.mods
         if self._user not in premods:  # Si el bot no estaba en los mods antes
-            self._callEvent('onModsChange', set(mods.keys()) - premods)  # TODO, problemas acá?
+            self._callEvent('onModsChange',
+                            set(mods.keys()) - premods)  # TODO, problemas acá?
         else:
             for user in set(mods.keys()) - premods:  # Con Mod
                 self._callEvent("onModAdd", user)
@@ -2579,7 +2742,9 @@ class Room(WSConnection):
             for user in premods & set(mods.keys()):  # Cambio de privilegios
                 # TODO acelear y evitar errores
                 privs = [x for x in dir(mods.get(user)) if
-                         x[0] != '_' and getattr(self._mods.get(user), x) != getattr(mods.get(user), x)]
+                         x[0] != '_' and getattr(self._mods.get(user),
+                                                 x) != getattr(mods.get(user),
+                                                               x)]
                 if privs and privs != ['MOD_ICON_VISIBLE', 'value']:
                     self._callEvent('onModChange', user, privs)
         self._mods = mods
@@ -2587,15 +2752,19 @@ class Room(WSConnection):
     def _rcmd_miu(self, args):  # TODO documentar
         self._callEvent('onPictureChange', User(args[0]))
 
+    def _rcmd_mustlogin(self, args = None):
+        self._callEvent('onLoginRequest')
+
     def _rcmd_n(self, args):  # TODO aún hay discrepancias en el contador
         """Cambió la cantidad de usuarios en la sala"""
         if not self.flags.NOCOUNTER:
             self._usercount = int(args[0], 16)
-            # assert not self._userdict or len(self._userdict) == self._usercount, 'Warning count doesnt match'  # TODO
+            # assert not self._userdict or len(self._userdict) ==
+            # self._usercount, 'Warning count doesnt match'  # TODO
             self._callEvent("onUserCountChange")
 
     def _rcmd_nomore(self, args):
-        """Cuando ya no hay mensajes anteriores a los recibidos del historial de una sala"""
+        """No hay más mensajes por cargar en la sala"""
         self._waitingmore = 0  # TODO revisar
 
     def _rcmd_ok(self, args):  # TODO
@@ -2615,14 +2784,17 @@ class Room(WSConnection):
             self._user = User(self._currentname)
             pass
         elif self._authtype == 'C':  # Login incorrecto
-            self._user = User('!' + getAnonName(self._connectiontime, self._puid))
+            self._user = User(
+                    '!' + getAnonName(self._connectiontime, self._puid))
         elif self._authtype == 'N':
             pass
         if mods:
             for x in mods.split(';'):
                 powers = x.split(',')[1]
-                self._mods[User(x.split(',')[0])] = self._parseFlags(powers, ModFlags)
-                self._mods[User(x.split(',')[0])].isadmin = int(powers) & AdminFlags != 0
+                self._mods[User(x.split(',')[0])] = self._parseFlags(powers,
+                                                                     ModFlags)
+                self._mods[User(x.split(',')[0])].isadmin = int(
+                        powers) & AdminFlags != 0
 
     def _rcmd_participant(self, args):
         """
@@ -2630,7 +2802,8 @@ class Room(WSConnection):
         TODO _historysessions a un usuario para saber quien es
         """
         cambio = args[0]  # Leave Join Change
-        ssid = args[1]  # Session ID, cambia por sesión (o pestaña del navegador).
+        ssid = args[
+            1]  # Session ID, cambia por sesión (o pestaña del navegador).
         puid = args[2]  # Personal User ID (en la sala)
         name = args[3]  # Visible Name
         tname = args[4]  # Anon Name
@@ -2654,7 +2827,8 @@ class Room(WSConnection):
                 if usr not in lista:
                     self._userhistory.append([contime, usr])
                 else:
-                    self._userhistory.remove([x for x in self._userhistory if x[1] == usr][0])
+                    self._userhistory.remove(
+                            [x for x in self._userhistory if x[1] == usr][0])
                     self._userhistory.append([contime, usr])
             if user.isanon:
                 self._callEvent('onAnonLeave', user, puid)
@@ -2664,7 +2838,8 @@ class Room(WSConnection):
                 self._callEvent('onJoin', user, puid)
             elif user.isanon:
                 self._callEvent('onAnonJoin', user, puid)
-            self._userdict[ssid] = [contime, user]  # Agregar la sesión a la sala
+            # Agregar la sesión a la sala
+            self._userdict[ssid] = [contime, user]
         else:  # 2 Account Change
             # Quitar la cuenta anterior de la lista y agregar la nueva
             # TODO conectar cuentas que han cambiado usando este método
@@ -2681,7 +2856,8 @@ class Room(WSConnection):
                     if before not in lista:
                         self._userhistory.append([contime, before])
                     else:
-                        self._userhistory.remove([x for x in self._userhistory][0])
+                        self._userhistory.remove(
+                                [x for x in self._userhistory][0])
                         self._userhistory.append([contime, before])
                     self._callEvent('onUserLogout', user, puid)
             user.addPersonalUserId(self, puid)
@@ -2708,9 +2884,11 @@ class Room(WSConnection):
                 msg.user._nameColor = msg.nameColor
             msg.attach(self, args[1])
             self._addHistory(msg)
-            if (msg.channel >= 4 or msg.badge) and msg.user not in [self.owner] + list(self.mods):  # TODO
+            if (msg.channel >= 4 or msg.badge) and msg.user not in [
+                self.owner] + list(self.mods):  # TODO
                 self._mods[msg.user] = self._parseFlags('82368',
-                                                        ModFlags)  # TODO lo añade con el poder más básico y el badge
+                                                        ModFlags)  # TODO lo
+                # añade con el poder más básico y el badge
                 self._mods[msg.user].isadmin = int('82368') & AdminFlags != 0
             self._callEvent("onMessage", msg.user, msg)
 
@@ -2729,7 +2907,8 @@ class Room(WSConnection):
         bnsrc = args[-3]  # TODO utilidad del bnsrc (el que banea)
         ubsrc = User(args[-2])
         time = args[-1]
-        self._unbanqueue.append(self._BANDATA(unid, ip, target, float(time), ubsrc))
+        self._unbanqueue.append(
+                self._BANDATA(unid, ip, target, float(time), ubsrc))
         if target == '':
             # Si el baneado era anon, intentar otbener su nombre
             msx = [msg for msg in self._history if msg.unid == unid]
@@ -2752,12 +2931,7 @@ class Room(WSConnection):
             target = User(params[2] or 'Anon')
             time = float(params[3])
             src = User(params[4])
-            self._unbanqueue.append(self._BANDATA(unid,
-                                  ip,
-                                  target,
-                                  time,
-                                  src)
-                    )
+            self._unbanqueue.append(self._BANDATA(unid, ip, target, time, src))
         self._callEvent("onUnBanlistUpdate")
 
     def _rcmd_updatemoderr(self, args):
@@ -2782,12 +2956,15 @@ class Gestor:
     PMHost = "c1.chatango.com"
 
     def __dir__(self):
-        return [x for x in set(list(self.__dict__.keys()) + list(dir(type(self)))) if x[0] != '_']
+        return [x for x in
+                set(list(self.__dict__.keys()) + list(dir(type(self)))) if
+                x[0] != '_']
 
     def __repr__(self):
         return "<%s>" % self.__class__.__name__
 
-    def __init__(self, name: str = None, password: str = None, pm: bool = None, accounts = None):
+    def __init__(self, name: str = None, password: str = None, pm: bool = None,
+                 accounts = None):
         self._accounts = accounts
         self._colasalas = queue.Queue()
         self.connlock = threading.Lock()
@@ -2804,7 +2981,8 @@ class Gestor:
         self._badconns = queue.Queue()
         self.bgmode = False
         if pm:
-            self._pm = PM(mgr = self, name = self.name, password = self.password)
+            self._pm = PM(mgr = self, name = self.name,
+                          password = self.password)
 
     ####
     # Propiedades
@@ -2841,7 +3019,8 @@ class Gestor:
         return list(self._rooms.keys())
 
     @classmethod
-    def easy_start(cls, rooms: list = None, name: str = None, password: str = None, pm: bool = True,
+    def easy_start(cls, rooms: list = None, name: str = None,
+                   password: str = None, pm: bool = True,
                    accounts: [(str, str), (str, str), ...] = None):
         """
         Inicio rápido del bot y puesta en marcha
@@ -2849,10 +3028,11 @@ class Gestor:
         @param name: Nombre de usuario
         @param password: Clave de conexión
         @param pm: Si se usará el PM o no
-        @param accounts: Una lista/tupla de cuentas ((clave,usuario),(clave,usuario))
+        @param accounts: Una lista/tupla de cuentas ((clave,usuario))
         """
         if not rooms:
-            rooms = str(input('Nombres de salas separados por coma: ')).split(',')
+            rooms = str(input('Nombres de salas separados por coma: ')).split(
+                    ',')
         if '' in rooms:
             rooms = []
         if not name and not accounts:
@@ -2879,13 +3059,16 @@ class Gestor:
     class _Task:
         def __repr__(self):
             return '<%s Task: "%s" [%s]>' % (
-                'Interval' if self.isInterval else 'Timeout', self.func.__name__, self.timeout)
+                'Interval' if self.isInterval else 'Timeout',
+                self.func.__name__, self.timeout)
 
         def __str__(self):
             return '<%s Task: "%s" [%s]>' % (
-                'Interval' if self.isInterval else 'Timeout', self.func.__name__, self.timeout)
+                'Interval' if self.isInterval else 'Timeout',
+                self.func.__name__, self.timeout)
 
-        def __init__(self, mgr, func = None, timeout: float = None, interval: bool = False):
+        def __init__(self, mgr, func = None, timeout: float = None,
+                     interval: bool = False):
             """
             Inicia una tarea nueva
             @param mgr: El dueño de esta tarea y el que la mantiene con vida
@@ -2902,7 +3085,7 @@ class Gestor:
     def findUser(self, name):
         if isinstance(name, User):  # TODO externalizar
             name = name.name
-        return [x.name for x in self._rooms.values() if x.findUser(name)]
+        return [x.name for x in list(self._rooms.values()) if x.findUser(name)]
 
     def getConnections(self):
         """
@@ -2927,17 +3110,18 @@ class Gestor:
         """
         Unirse a una sala con la cuenta indicada
         @param room: Sala a la que unirse
-        @param account:  Opcional, para entrar con otra cuenta del bot solo escribir su nombre
+        @param account:  Opcional, para entrar con otra cuenta str o ['','']
         """
         if account is None:
             account = self._accounts[0]
         if isinstance(account, str):  # TODO externalizar
-            cuenta = {k.lower(): [k, v] for k, v in self._accounts}.get(account.lower(), self._accounts[0])
+            cuenta = {k.lower(): [k, v] for k, v in self._accounts}.get(
+                    account.lower(), self._accounts[0])
             cuenta[0] = account
             account = cuenta
         if room not in self._rooms:
             # self._rooms[room] = Room(room, self, account)
-            self._colasalas.put((room, account))
+            self._colasalas.put((room.lower(), account))
             return True
         else:
             return False
@@ -2961,7 +3145,8 @@ class Gestor:
         """
         self.onInit()
         self._running = True
-        self._jt = threading.Thread(target = self._joinThread, name = "Join rooms")
+        self._jt = threading.Thread(target = self._joinThread,
+                                    name = "Join rooms")
         self._jt.daemon = True
         self._jt.start()
         while self._running:
@@ -2974,21 +3159,15 @@ class Gestor:
                     if not conns and not socks and not wsocks:
                         rd, wr, sp = [], [], []
                     else:
-                        rd, wr, sp = select.select(socks, wsocks, socks, self._TimerResolution)
+                        rd, wr, sp = select.select(socks, wsocks, socks,
+                                                   self._TimerResolution)
                 for sock in wr:  # Enviar
                     try:
                         con = [x for x in conns if x.sock == sock][0]
                         with self.connlock:
                             if con.sock:
                                 size = sock.send(con.wbuf)
-                                con._wbuf = con.wbuf[size:]
-                                # TODO para la ordenacion de mensajes
-                                # while con.wbuf.split(b'\x81') and len(con.wbuf.split(b'\x81'))>1:
-                                #    size = sock.send(b'\x81'+con.wbuf.split(b'\x81')[1])
-                                #    con._wbuf = con.wbuf[size:]
-                                # else:
-                                #    size = sock.send(con.wbuf)
-                                #    con._wbuf = con.wbuf[size:]
+                                con._wbuf = con.wbuf[size:]  # TODO para la ordenacion  #  de mensajes  # while con.wbuf.split(  #  # b'\x81') and len(con.wbuf.split(  #  # b'\x81'))>1:  #    size = sock.send(  #  # b'\x81'+con.wbuf.split(b'\x81')[1])  #  #  # con._wbuf = con.wbuf[size:]  # else:  #  #  # size = sock.send(con.wbuf)  #    con._wbuf  #  = con.wbuf[size:]
                     except Exception as e:
                         if debug:
                             print("Error sock.send " + str(e), sys.stderr)
@@ -3004,25 +3183,28 @@ class Gestor:
                             con.onData(chunk)
                         elif chunk is not None:
                             # Conexión perdida
-                            if not con._connected:  # Nunca se recibió comandos de la conexión
+                            if not con._connected:  # Nunca se recibió
+                                # comandos de la conexión
                                 con.disconnect()
                             else:
-                                con.reconnect()
-                            # TODO ConnectionRefusedError
-                    except socket.error as cre:  # socket.error - ConnectionResetError
+                                con.reconnect()  # TODO ConnectionRefusedError
+                    except socket.error as cre:  # socket.error -
+                        # ConnectionResetError
                         # TODO esto no funciona si hay muchas salas
                         self.test = cre  # variable de depuración para android
-                        print('Conexión perdida, reintentando en 10 segundos...')
+                        print('Conexión perdida, reintentando en 10 '
+                              'segundos...')
                         counter = con.attempts or 1
                         while counter:
                             try:
                                 con.reconnect()
                                 counter = 0
-                            except Exception as sgai:  # socket.gaierror:  # En caso de que no haya internet
-                                print(
-                                        '[{}][{:^5}] Aún no hay internet...[{}]'.format(time.strftime('%I:%M:%S %p'),
-                                                                                        counter, sgai),
-                                        file = sys.stderr)
+                            except Exception as sgai:  # socket.gaierror:  #
+                                # En caso de que no haya internet
+                                print('[{}][{:^5}] Aún no hay internet...[{'
+                                      '}]'.format(time.strftime('%I:%M:%S %p'),
+                                                  counter, sgai),
+                                      file = sys.stderr)
                                 counter += 1
                                 time.sleep(10)
             self._tick()
@@ -3156,7 +3338,8 @@ class Gestor:
         """
         Al ser borrados todos los mensajes de la sala
         @param room: Sala donde se han borrado los mensajes
-        @param result: Resultado, puede ser 'ok' o 'error'. El error solo aparece si el bot ha sido quien solicita el
+        @param result: Resultado, puede ser 'ok' o 'error'. El error solo
+        aparece si el bot ha sido quien solicita el
         borrado
         """
         pass
@@ -3226,7 +3409,8 @@ class Gestor:
 
     def onHistoryMessage(self, room, user, message):
         """
-        Al cargar un mensaje anterior a la conexión del bot en la sala. Util para mantener registrado hasta los
+        Al cargar un mensaje anterior a la conexión del bot en la sala. Util
+        para mantener registrado hasta los
         momentos en los que no está el bot
         @param room: Sala donde se cargó el mensaje
         @param user: Usuario del mensaje
@@ -3244,7 +3428,13 @@ class Gestor:
         """
         Al fracasar un intento de acceso
         @param room: Sala o PM
-        @return:
+        """
+        pass
+
+    def onLoginRequest(self, room):
+        """
+        Cuando una sala solicita estar logeado para poder participar en ella
+        @param room: Sala donde ocurre el evento
         """
         pass
 
@@ -3283,7 +3473,8 @@ class Gestor:
         Al cambiar los privilegios de un moderador
         @param room: Sala en la que ocurre el evento
         @param user: Usuario al que le han cambiado sus privilegios
-        @param privs: Nombres de los privilegios modificados(nombres según modflags)
+        @param privs: Nombres de los privilegios modificados(nombres según
+        modflags)
         """
         pass
 
