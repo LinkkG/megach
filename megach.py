@@ -3,7 +3,7 @@
 """
 File: megach.py
 Title: Librería de chatango
-Original Author: megamaster12 <supermegamaster32@gmail.com>
+Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
@@ -712,11 +712,12 @@ class User:
 
     @property
     def age(self):
-        return self.info and self.info.age or None
+        return self.info.age
 
     @property
     def about(self):
-        return self.info and _clean_message(urlreq.unquote(self.info.about))[
+        return self.info.about and \
+               _clean_message(urlreq.unquote(self.info.about))[
             0] or None
 
     @property
@@ -1074,14 +1075,14 @@ class WSConnection:
         if not self._connected:
             self._connectattempts += 1
             self._sock = socket.socket()
-            try:
-                # TODO Comprobar, si no hay internet hay error acá
-                self._sock.connect((self._server, self._port))
-                self._sock.setblocking(False)
-                self._handShake()
-            except:
-                self._disconnect()
-                return False
+            # try:
+            # TODO Comprobar, si no hay internet hay error acá
+            self._sock.connect((self._server, self._port))
+            self._sock.setblocking(False)
+            self._handShake()
+            # except:
+            #    self._disconnect()
+            #    return False
             return True
         return False
 
@@ -1360,6 +1361,7 @@ class PM(WSConnection):
             self._bgmode = int(self.mgr.bgmode)
             self.connect()
         self._trackqueue = queue.Queue()
+        self._pmLock = threading.Lock()
 
     @property
     def blocklist(self):
@@ -1449,16 +1451,21 @@ class PM(WSConnection):
         @param user: str o User - Usuario
         @return: [laston,ison,status]
         """
-        if type(user) == User:
+
+        if isinstance(user, User):
             user = user.name
+        if user == self.user.name:  # El usuario propio daría error
+            return ['', '0', self.connected and 'online' or 'offline']
         self._sendCommand('track', user)
         try:
             res = [None] * 3
             # TODO si esto falla habrán resultados huérfanos
-            # TODO esto debe ejecutarse en otro thread obligatoriamente
-            with self.mgr.connlock:
-                res = self._trackqueue.get(timeout = 5)
-            return res
+            if threading.current_thread().name != 'MainThread':
+                # Esto debe ejecutarse en otro thread obligatoriamente
+                with self._pmLock:
+                    res = self._trackqueue.get()
+                return res
+            return [None] * 3
         except:
             return [None] * 3
 
@@ -1595,7 +1602,10 @@ class PM(WSConnection):
 
     def _rcmd_track(self, args):  # TODO completar
         # print("track "+str(args))
-        pass
+        if not self._trackqueue.empty():
+            self._trackqueue.get()
+        self._trackqueue.put(args)
+
 
     def _rcmd_time(self, args):
         """Recibir tiempo del server y corregirlo"""
