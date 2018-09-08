@@ -2339,10 +2339,12 @@ class Room(WSConnection):
             res = res.read().decode('utf-8')
             if 'success' in res:
                 if url:  # TODO
-                    return "http://ust.chatango.com/um/%s/%s/%s/img/t_%s.jpg" \
-                           % (
-                        self.user.name[0], self.user.name[1], self.user.name,
+                    url = "http://ust.chatango.com/um/%s/%s/%s/img/t_%s.jpg"
+                    url %= (
+                        self.user.name[0], self.user.name[1],
+                        self.user.name,
                         res.split(':', 1)[1])
+                    return url
                 else:
                     return res.split(':', 1)[1]
         return False
@@ -2707,7 +2709,7 @@ class Room(WSConnection):
             self._history.appendleft(msg)
             self._callEvent("onHistoryMessage", user, msg)
 
-    def _rcmd_inited(self, args):  # TODO
+    def _rcmd_inited(self, args = None):  # TODO
         """En el chat esto desactiva la animación de espera"""
         self._sendCommand("gparticipants")
         self._sendCommand("getpremium", "l")
@@ -2718,8 +2720,11 @@ class Room(WSConnection):
             self._callEvent("onConnect")
         else:
             self._callEvent("onReconnect")
-        if args and debug:
-            print('New Unhandled arg on inited ', file = sys.stderr)  # comprobar el tamaño máximo del  #  # history y solicitar anteriores hasta llenar  # if len(  #  # self._history) < self._history.maxlen and not self._nomore:  #  #    self._sendCommand("get_more:20:" + str(self._waitingmore -  #  1))  # TODO revisar
+        # comprobar el tamaño máximo del  #  #
+        # history y solicitar anteriores hasta llenar  # if len(  #  #
+        # self._history) < self._history.maxlen and not self._nomore:  #
+        #    self._sendCommand("get_more:20:" + str(self._waitingmore -
+        #  1))  # TODO revisar
 
     def _rmd_logoutfirst(self, args):
         # TODO al intentar iniciar sesión sin haber
@@ -3177,7 +3182,15 @@ class Gestor:
                         with self.connlock:
                             if con.sock:
                                 size = sock.send(con.wbuf)
-                                con._wbuf = con.wbuf[size:]  # TODO para la ordenacion  #  de mensajes  # while con.wbuf.split(  #  # b'\x81') and len(con.wbuf.split(  #  # b'\x81'))>1:  #    size = sock.send(  #  # b'\x81'+con.wbuf.split(b'\x81')[1])  #  #  # con._wbuf = con.wbuf[size:]  # else:  #  #  # size = sock.send(con.wbuf)  #    con._wbuf  #  = con.wbuf[size:]
+                                con._wbuf = con.wbuf[size:]
+                                # TODO para la ordenacion
+                                #  de mensajes  # while con.wbuf.split(  #  #
+                                #  b'\x81') and len(con.wbuf.split(  #  #
+                                # b'\x81'))>1:  #    size = sock.send(  #  #
+                                # b'\x81'+con.wbuf.split(b'\x81')[1])  #  #
+                                #  con._wbuf = con.wbuf[size:]  # else:  #  #
+                                #  size = sock.send(con.wbuf)  #    con._wbuf
+                                #  = con.wbuf[size:]
                     except Exception as e:
                         if debug:
                             print("Error sock.send " + str(e), sys.stderr)
