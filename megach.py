@@ -1920,7 +1920,7 @@ class Room(WSConnection):
             rest.detach()
         self._history.append(msg)
 
-    def _getUserlist(self, unique = True, memory = 0, anons = False):
+    def _getUserlist(self, unique = 1, memory = 0, anons = False):
         """
         Regresa una lista con los nombres de usuarios en la sala
         @param unique: bool indicando si la lista es única
@@ -1981,7 +1981,7 @@ class Room(WSConnection):
         """Borra todos los mensajes"""
         if self.user == self._owner or self._user in self._mods and \
                 self._mods.get(
-                self._user).EDIT_GROUP:
+                        self._user).EDIT_GROUP:
             self._sendCommand("clearall")
             return True
         else:
@@ -2140,7 +2140,7 @@ class Room(WSConnection):
     def unbanUser(self, user):
         rec = self.banRecord(user)
         if rec:
-            self.rawUnban(rec["target"].name, rec["ip"], rec["unid"])
+            self.rawUnban(rec.target.name, rec.ip, rec.unid)
             return True
         else:
             return False
