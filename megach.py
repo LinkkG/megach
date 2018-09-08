@@ -7,7 +7,7 @@ Original Author: megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.3.3
+Version: 1.3.4
 """
 ################################################################
 # Imports
@@ -71,29 +71,29 @@ tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
 _maxServernum = sum(x[1] for x in tsweights)
 
 GroupFlags = {
-    "LIST_TAXONOMY":         1, "NOANONS": 4, "NOFLAGGING": 8, "NOCOUNTER": 16,
-    "NOIMAGES":              32, "NOLINKS": 64, "NOVIDEOS": 128,
-    "NOSTYLEDTEXT":          256, "NOLINKSCHATANGO": 512,
-    "NOBRDCASTMSGWITHBW":    1024, "RATELIMITREGIMEON": 2048,
-    "CHANNELSDISABLED":      8192, "NLP_SINGLEMSG": 16384,
-    "NLP_MSGQUEUE":          32768, "BROADCAST_MODE": 65536,
-    "CLOSED_IF_NO_MODS":     131072, "IS_CLOSED": 262144,
-    "SHOW_MOD_ICONS":        524288, "MODS_CHOOSE_VISIBLITY": 1048576,
-    "HAS_XML":               268435456, "UNSAFE": 536870912
+    "LIST_TAXONOMY":      1, "NOANONS": 4, "NOFLAGGING": 8, "NOCOUNTER": 16,
+    "NOIMAGES":           32, "NOLINKS": 64, "NOVIDEOS": 128,
+    "NOSTYLEDTEXT":       256, "NOLINKSCHATANGO": 512,
+    "NOBRDCASTMSGWITHBW": 1024, "RATELIMITREGIMEON": 2048,
+    "CHANNELSDISABLED":   8192, "NLP_SINGLEMSG": 16384,
+    "NLP_MSGQUEUE":       32768, "BROADCAST_MODE": 65536,
+    "CLOSED_IF_NO_MODS":  131072, "IS_CLOSED": 262144,
+    "SHOW_MOD_ICONS":     524288, "MODS_CHOOSE_VISIBLITY": 1048576,
+    "HAS_XML":            268435456, "UNSAFE": 536870912
     }
 
 ModFlags = {
-    'DELETED':           1, 'EDIT_MODS': 2, 'EDIT_MOD_VISIBILITY': 4,
-    'EDIT_BW':           8, 'EDIT_RESTRICTIONS': 16, 'EDIT_GROUP': 32,
-    'SEE_COUNTER':       64, 'SEE_MOD_CHANNEL': 128, 'SEE_MOD_ACTIONS': 256,
-    'EDIT_NLP':          512, 'EDIT_GP_ANNC': 1024, 'EDIT_ADMINS': 2048,
-    'EDIT_SUPERMODS':    4096, 'NO_SENDING_LIMITATIONS': 8192, 'SEE_IPS': 16384,
-    'CLOSE_GROUP':       32768, 'CAN_BROADCAST': 65536,
-    'MOD_ICON_VISIBLE':  131072, 'IS_STAFF': 262144
+    'DELETED':          1, 'EDIT_MODS': 2, 'EDIT_MOD_VISIBILITY': 4,
+    'EDIT_BW':          8, 'EDIT_RESTRICTIONS': 16, 'EDIT_GROUP': 32,
+    'SEE_COUNTER':      64, 'SEE_MOD_CHANNEL': 128, 'SEE_MOD_ACTIONS': 256,
+    'EDIT_NLP':         512, 'EDIT_GP_ANNC': 1024, 'EDIT_ADMINS': 2048,
+    'EDIT_SUPERMODS':   4096, 'NO_SENDING_LIMITATIONS': 8192, 'SEE_IPS': 16384,
+    'CLOSE_GROUP':      32768, 'CAN_BROADCAST': 65536,
+    'MOD_ICON_VISIBLE': 131072, 'IS_STAFF': 262144
     }
 
-AdminFlags = (ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] | ModFlags[
-    "EDIT_GROUP"] | ModFlags["EDIT_GP_ANNC"])
+AdminFlags = (ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] |
+              ModFlags["EDIT_GROUP"] | ModFlags["EDIT_GP_ANNC"])
 
 Fonts = {
     'arial':    0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4,
@@ -113,8 +113,7 @@ ModChannels = Badges['shield'] | Badges['staff'] | Channels['mod']
 
 def _genUid() -> str:
     """
-    Generar una uid ALeatoria de 16 dígitos. Se usa en el login por
-    seguridad
+    Generar una uid ALeatoria de 16 dígitos.
     """
     return str(random.randrange(10 ** 15, 10 ** 16))
 
@@ -160,10 +159,11 @@ def convertPM(msg: str) -> str:
         else:
             s = int(s)
         if len(c) == 6:
-            c = '{:X}{:X}{:X}'.format(round(int(c[0:2], 16) / 17),  # r
-                                      round(int(c[2:4], 16) / 17),  # g
-                                      round(int(c[4:6], 16) / 17)  # b
-                                      )
+            c = '{:X}{:X}{:X}'.format(
+                    round(int(c[0:2], 16) / 17),  # r
+                    round(int(c[2:4], 16) / 17),  # g
+                    round(int(c[4:6], 16) / 17)  # b
+                    )
         return '</g><g x{:02}s{}="{}">'.format(s, c, f[1:-1])
 
     return pattern.sub(repl, msg)
@@ -582,12 +582,12 @@ class User:
     def __new__(cls, name, **kwargs):
         if name is None:
             name = ""
-        name = name.lower()
-        if name in cls._users:
-            return cls._users[name]
+        key = name.lower()
+        if key in cls._users:
+            cls._users[key]._showname = name
+            return cls._users[key]
         self = super().__new__(cls)
-        cls._users[name] = self
-
+        cls._users[key] = self
         self._fontColor = '0'
         self._fontFace = '0'
         self._fontSize = 12
@@ -597,7 +597,7 @@ class User:
         self._mbg = False
         self._msgs = list()  # TODO Mantener historial reciente de un usuario
         self._mrec = False
-        self._name = name.lower()
+        self._name = key
         self._nameColor = '000'
         self._puids = dict()
         self._showname = name
