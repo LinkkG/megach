@@ -2063,12 +2063,12 @@ class Room(WSConnection):
     def getLastMessage(self, user = None):
         """Obtener el último mensaje de un usuario en una sala"""
         if not user:
-            user = self._user
+            return self._history and self._history[-1] or None
         if isinstance(user, User):
             user = user.name
-        msg = [msg for msg in reversed(self._history) if msg.user.name == user]
-        if msg:
-            return msg[0]
+        for x in reversed(list(self._history)[:]):
+            if x.user.name == user:
+                return x
         return None
 
     def getLevel(self, user):
