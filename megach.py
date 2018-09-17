@@ -851,9 +851,9 @@ class Message:
     @property
     def body(self):
         """
-        Cuerpo del mensaje sin saltos de linea TODO quitar espacios extra
+        Cuerpo del mensaje sin saltos de linea
         """
-        return self._body.replace('\n', ' ').replace('  ', ' ')
+        return ' '.join(self._body.replace('\n', ' ').split(' '))
 
     @property
     def channel(self):
