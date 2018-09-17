@@ -2,34 +2,41 @@
 # -*- coding: utf-8 -*-
 """
 Archivo de prueba para mi versión del ch
+Autor: Megamaster12
 Incluirá las opciones básicas e iré añadiendo más poco a poco
-Versión 1.5.2
+Versión 1.5.3
 """
+################################################################
+# No brrar las dos primeras lineas, son opciones de python para el archivo
+# Estos son comentarios, la compu no los lee y el python los ignora
+# Se escriben para uno mismo, o para otro programador|
+# Acostumbrate a hacerlo siempre
+# Lo que este a la derecha de # es ignorado
+# Asi que no lo pongas a la izquierda del codigo u.u
+################################################################
 # Módulos básicos
-import math
-import megach
-import os
-import random
-import socket
-import string
-import sys
-import time
-import urllib.request as urlreq
-import urllib.parse as urlparse
+import megach  # Mi megach, es una librería pública para chatango
+import os  # Para acceder a cosas específicas de tu sistema operativo
+import random  # Para seleccion aleatoria
+import socket  # Para administrar conexiones
+import string  # Para operaciones con cadenas de texto
+import sys  # Para detalles de tu versión de python
+import time  # Para operaciones con la hora
+import urllib.request as urlreq  # Consultas web
+import urllib.parse as urlparse  # Lectura de datos web
 
-version = '1.5.2'
-#  Módulos del bot
-# TODO Interfaz gráfica
-# Dueños, Solo minúsculas
-owners = ['megamaster12', 'linkkg', 'milton797']
-# Depuración
+version = '1.5.3'
+
+
+
 class config:
     botnames = 'e15 examplebot boteto'.split()
-    debug = False  # Printear cosas extra para depuración
-    debugchats = ['pythonrpg', 'PM']  # Conexiones donde se printeará lo recibido
-    # ignored commands onRaw
-    prefijos = '| %'.split()  # Uno o más prefijos separados por espacio
-
+    # Dueños, Solo minúsculas
+    owners = ['megamaster12', 'linkkg', 'milton797']
+    # Uno o más prefijos separados por espacio
+    prefijos = '% $'.split()
+    # Ruta para el archivo simi
+    rutasim = os.path.join(os.getcwd(), 'simi.json')
 
 
 class Mibot(megach.Gestor):
@@ -40,28 +47,25 @@ class Mibot(megach.Gestor):
     """
 
     def onInit(self):
-        """Espacio para ejecutar acciones de carga de información u otras cosas"""
+        """
+        Espacio para ejecutar acciones de carga de información u otras
+        cosas que se deben hacer al inicio
+        """
         print("Inicio del BOT")
-        self.setNameColor("FF0000")  # el color del nombre de usuario en hexadecimal
-        self.setFontColor("0000FF")  # el color de la letra
-        self.setFontFace("Typewriter")  # el tipo de letra, usas los tipos de letra que hay en chatango
-        self.setFontSize(12)  # tamaño de la letra, supuestamente el maximo es 14 sin premium
-        self.enableBg()  # por si le pones bg al bot, esto se lo activa
-    
-    def onConnect(self, room):
-        """Al haberse conectado a una sala de chat"""
-        print('[{}][{}] Conectado. Intentos: {}'.format(time.strftime("%I:%M:%S %p"), room.name,
-                                                        room.attempts))
-    
-    def onDisconnect(self, room):
-        """Al desconectarse de una sala"""
-        print('[{}][{}] Desconectado'.format(time.strftime("%I:%M:%S %p"), room.name))
+        self.setNameColor("FF0000")  # color del nombre en hexadecimal
+        self.setFontColor("0000FF")  # color de la letra en hexadecimal
+        self.setFontFace("Typewriter")  # Fuente del bot
+        self.setFontSize(12)  # Tamaño de fuente, el maximo es 14 sin premium
+        self.enableBg()  # Si el bot tiene premium, activar el bg
 
     def onMessage(self, room, user, message):
         """Al recibir un mensaje en una sala"""
         try:
             nick = '@' + user
-            ubic = "".join({32768: "MOD", 256: "RED", 0: "NORMAL", 2048: "BLUE", 2304: "BLUE+RED"}.get(
+            ubic = "".join({
+                32768: "MOD", 256: "RED", 0: "NORMAL", 2048: "BLUE",
+                2304:  "BLUE+RED"
+                }.get(
                     message.channel))
             print("[{0:_^10.10}][{4}][{3}] {1}: {2} ".format(
                     room.name,
@@ -69,14 +73,22 @@ class Mibot(megach.Gestor):
                     message.body.replace("&#39;", "'"),
                     time.strftime("%I:%M:%S %p"),
                     ubic))
-            if len(message.body.split()) > 1:  # Si el mensaje contenía más de una palabra
-                # El comando será la primera palabra y los argumentos serán el resto
-                # El .replace es para que puedas usar el simbolo ' en tus mensajes
+            if user == room.user:
+                return
+
+            if len(
+                    message.body.split()) > 1:  # Si el mensaje contenía más
+                # de una palabra
+                # El comando será la primera palabra y los argumentos serán
+                # el resto
+                # El .replace es para que puedas usar el simbolo ' en tus
+                # mensajes
                 cmd, args = message.body.split(" ", 1)
             else:
-                # El comando será el mensaje(1 palabra) y los argumentos serán algo vacío
+                # El comando será el mensaje(1 palabra) y los argumentos
+                # serán algo vacío
                 cmd, args = message.body.lower(), ""
-            
+
             # cmd= comando usado #args=argumentos que recibe el comando
             # Comprobar si se usó el prefijo y separarlo del comando
             if cmd and cmd[0] in config.prefijos:
@@ -86,21 +98,28 @@ class Mibot(megach.Gestor):
                 prfx = False
             if prfx:  # Si se uso el prefijo
                 ################################################################
-                # Aqui comienzan los comandos, puedes poner los que quieras mientras esten dentro
+                # Aqui comienzan los comandos, puedes poner los que quieras
+                # mientras esten dentro
                 ################################################################
-                if cmd == "all":
+                if cmd == "all":  # Decir los nombres de todos los usuarios
+                    # en la sala
                     usuarios = sorted(room.shownames)
-                    usuarios = '{} y {}'.format(', '.join(usuarios[:-2]), usuarios[-1])
+                    usuarios = '{} y {}'.format(', '.join(usuarios[:-2]),
+                                                usuarios[-1])
                     room.message("Lista completa de los usuarios: " + usuarios)
-                    # usuarios=sorted([(x.showname + ( ('(%s)' % len(x._getSessionIds(room))) if len(
-                    # x._getSessionIds(room)) > 1 else '')) for x in
-                    #                              room._getUserlist(1)])
+
+                elif cmd == "baila":  # Enviar un mensaje bailando,
+                    # si lo cambias por un gif animado queda mejor
+                    room.message("o(^^o) ---- ^(oo)^ ---- (o^^)o")
+
+                # Conectarse a una sala distinta
                 elif cmd in ['conecta', 'join'] and user.name in owners:
                     if self.joinRoom(args):
                         room.message("Conectado ♪")
                     else:
                         room.message("No puedo ir...")
 
+                # Desconectarse de alguna sala
                 elif cmd == "desconecta" and user.name in owners:
                     if args.lower() in self._rooms:
                         self.leaveRoom(args)
@@ -108,19 +127,21 @@ class Mibot(megach.Gestor):
                     else:
                         room.message("No estoy conectado a " + args)
 
+                # Mencionar las salas donde el bot está conectado
                 elif cmd in ["donde", "where"]:
-                    salas = ["{} ({})".format(x.name, x.userCount) for x in self.rooms]
+                    salas = ["{} ({})".format(x.name, x.userCount) for x in
+                             self.rooms]
                     room.message("Estoy en: " + ', '.join(salas))
-                
-                elif cmd == "baila":
-                    room.message("o(^^o) ---- ^(oo)^ ---- (o^^)o")
 
+                # Repetir un mensaje
                 elif cmd in ["say", "write"]:
                     room.message(args)
 
+                # Enseñarle una frase al simi del bot
                 elif cmd in ['sim', 'simi']:
                     clave, definicion = [x.strip() for x in args.split(":", 1)]
-                    archivo = open(os.path.join(os.getcwd(), 'simi.json'), "a", encoding = 'utf-8')
+                    archivo = open(os.path.join(os.getcwd(), 'simi.json'), "a",
+                                   encoding = 'utf-8')
                     archivo.write(clave + ":" + definicion + "\n")
                     resultado = "Respuesta guardada correctamente ;)"
                     room.message(resultado)
@@ -137,67 +158,50 @@ class Mibot(megach.Gestor):
                             try:
                                 room.message(str(exec(args)))
                             except Exception as e2:
-                                raise Exception(str(e2) + str(err))
+
+                                raise Exception(str(e2) + '---' + str(err) + (
+                                        str(e2) == str(
+                                        err) and 'son iguales' or 'no me '
+                                                                  'salen '
+                                                                  'igual :v'))
                     if cmd in ['ex']:
                         room.message(str(exec(args)))
-            else:
-                mention = False
+            else:  # if prefix, este es el else
                 cmd = message.body
-                resultado = ''
-                splitted = ''.join(x for x in cmd if x.isalnum() or x in [' ']).split()
+                splitted = ''.join(x for x in cmd if
+                                   x.isalnum() or x in [' ']).lower().split()
                 ######################################################
                 # NO PREFIX USED
-
-                for x in config.botnames + [room.user.showname.lower()]:
+                for x in config.botnames + [room.user.name.lower()]:
                     if x in splitted:
                         cmd = ''.join(cmd.split(x)).strip()  # Clear mentions
-                        mention = True
-                if not mention:
-                    return  # Nothing left here
+                        break
+                else:
+                    return  # No mentions al bot
                 if len(splitted) == 1:
-                    room.message(random.choice(['¿Que pasa?', '¿Que quiere prro v:<', '¿Necesitas hamor?']))
+                    room.message(random.choice(
+                            ['¿Que pasa?', '¿Que quiere prro v:<',
+                             '¿Necesitas hamor?']))
                     return
                 ######################################################
                 # SIMI SECTION
                 try:
-                    consulta, definicion = define('simi.json', cmd)
-                    plantilla = string.Template(definicion)
-                    if room:
-                        donde = room.name
-                    else:
-                        donde = "Mensajería Privada"
-                    resultado = plantilla.safe_substitute(**{
-                        'nick':    nick,
-                        'r':       '\r',
-                        'prefix':  random.choice(config.prefijos),
-                        'prefijo': random.choice(config.prefijos),
-                        'name':    self.user.name,
-                        'room':    donde
-                        })
+                    resultado = mysimianswer(cmd, nick = nick, r = '\r',
+                                             prefix = random.choice(
+                                                     config.prefijos),
+                                             prefijo = random.choice(
+                                                     config.prefijos),
+                                             name = room.user.showname,
+                                             room = room)
                     if not resultado:
                         resultado = 'No answer, sorry :v'
                 except Exception as e15:
                     resultado = ' Simi error ' + str(e15)
+                #######################################################
                 room.message(resultado)
 
         except Exception as e4:
             room.message(str(e4))
-    
-    def onPMConnect(self, pm):
-        """
-        Al conectarse al PM
-        @param pm: El PM
-        """
-        print("[{}] Conectado al PM como {}".format(time.strftime('%I:%M:%S %p'), pm.currentname))
-
-    def onPMOfflineMessage(self, pm, user, message):
-        """
-        Al recibir un mensaje estando offline
-        @param pm: El PM
-        @param user: Remitente
-        @param body: Mensaje recibido
-        """
-        print("[{}][{:_^10.10}][{}]:{}".format(time.strftime("%I:%M:%S %p"), pm.name, user, message))
 
     def onPMMessage(self, pm, user, message):
         """
@@ -206,15 +210,57 @@ class Mibot(megach.Gestor):
         @param user: El usuario que manda el mensaje
         @param message: El mensaje recibido
         """
-        print("[{}][{:_^10.10}][{}]:{}".format(time.strftime("%I:%M:%S %p"), pm.name, user.name, message))
-    
+        print("[{}][{:_^10.10}][{}]:{}".format(time.strftime("%I:%M:%S %p"),
+                                               pm.name, user.name, message))
+
+    def onPMOfflineMessage(self, pm, user, message):
+        """
+        Al recibir un mensaje estando offline
+        @param message: Mensaje recibido
+        @param pm: El PM
+        @param user: Remitente
+        @param body: Mensaje recibido
+        """
+        print("[{}][{:_^10.10}][{}]:{}".format(time.strftime("%I:%M:%S %p"),
+                                               pm.name, user, message))
+
+    def onConnect(self, room):
+        """Se activa al conectarse a una sala de chat"""
+        print('[%s][%s] Conectado como %s en %s intento%s' % (
+            time.strftime("%I:%M:%S %p"),
+            room,
+            room.user,
+            room.attempts,
+            room.attempts > 1 and 's' or ''
+            )
+              )
+
+    def onPMConnect(self, pm):
+        """Al conectarse al PM"""
+        print('[%s][%s] Conectado como %s en %s intento%s' % (
+            time.strftime("%I:%M:%S %p"),
+            pm,
+            pm.user,
+            pm.attempts,
+            pm.attempts > 1 and 's' or ''
+            )
+              )
 
     def onReconnect(self, room):
         """
         Al reconectarse a una sala
         @param room: Sala a la que se ha reconectado
         """
-        print('[{}]Reconectado en {} intentos '.format(room.name, room.attempts))
+        print('[%s][%s]Reconectado en %s intento%s' % (
+            time.strftime("%I:%M:%S %p"),
+            room,
+            room.attempts,
+            room.attempts > 1 and 's' or '')
+              )
+
+    def onDisconnect(self, room):
+        """Al desconectarse de una sala"""
+        print('[%s][%s] Desconectado' % (time.strftime("%I:%M:%S %p"), room))
 
 
 def crea(archivo, texto):
@@ -245,7 +291,8 @@ def define(archivo, texto = '', match = 1):
     # Cada uno de los valores que tenga coincidencias con la busqueda
     matches = []
     for x in lineas:
-        if any([z in limpiaTexto(x.split(':', 1)[0]) for z in sep if len(z) >= match]):
+        if any([z in limpiaTexto(x.split(':', 1)[0]) for z in sep if
+                len(z) >= match]):
             matches.append(x)
     # Nivel 2
     # Buscar la mayor coincidencia
@@ -254,7 +301,8 @@ def define(archivo, texto = '', match = 1):
     if matches:
         for x in matches:
             actual = len(
-                    [a for a in sep if a in limpiaTexto(x.split(':')[0]).split()])
+                    [a for a in sep if
+                     a in limpiaTexto(x.split(':')[0]).split()])
             if actual > mayor:
                 mayor = actual
                 filtro.clear()
@@ -285,17 +333,15 @@ def mysimianswer(cmd, **kw):
     ruta = os.path.join(os.getcwd(), 'simi.json')
     consulta, definicion = define(ruta, cmd)
     plantilla = string.Template(definicion)
-    if 'room' in kw:
-        donde = kw['room'].name
-    else:
-        donde = "Mensajería Privada"
     resultado = plantilla.safe_substitute(**kw)
     return resultado or 'No answer, sorry :v'
+
 
 accounts = [('Account1', 'Pass1'),
             ('Cuenta2', 'Clave2')]
 try:
-    # bot = Mibot.easy_start(['pythonrpg'], USERNAME,PASSWORD ,pm= True) # También es válido así
+    # bot = Mibot.easy_start(['pythonrpg'], USERNAME,PASSWORD ,pm= True) #
+    # También es válido así
     bot = Mibot.easy_start(['pythonrpg'], pm = True, accounts = accounts)
 except socket.gaierror as e:  # En caso de que no haya internet
     print("No hay internet, haz algo O.o")
