@@ -14,6 +14,7 @@ Version: 1.3.4
 ################################################################
 import base64
 from collections import namedtuple, deque
+from datetime import datetime
 import hashlib
 import html as html2
 import sys
@@ -99,6 +100,12 @@ Fonts = {
     'arial':    0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4,
     'palatino': 5, 'papirus': 6, 'times': 7, 'typewriter': 8
     }
+
+MessageFlags = {
+    'IS_PREMIUM':  4, 'HAS_BG': 8, 'BADGE_SHIELD': 64, 'BADGE_STAFF': 128,
+    'CHANNEL_RED': 256, 'CHANNEL_BLUE': 2048, 'CHANNEL_MOD': 32768
+    }
+
 
 Channels = {
     "white": 0, "red": 256, "blue": 2048, "mod": 32768
@@ -577,7 +584,8 @@ class User:
     """
     _users = {}
     _INFO = namedtuple('userinfo',
-                       ['about', 'gender', 'age', 'country', 'bgtime'])
+                       ['about', 'gender', 'age', 'country', 'bgtime',
+                        'fullprofile'])
 
     def __new__(cls, name, **kwargs):
         if name is None:
@@ -699,20 +707,27 @@ class User:
             return self._info
         link = '/%s/%s/' % ('/'.join((self.name * 2)[:2]), self.name)
         url = 'http://fp.chatango.com/profileimg' + link + 'mod1.xml'
+        url2 = 'http://fp.chatango.com/profileimg' + link + 'mod2.xml'
         try:
             mixml = ET.fromstring(urlreq.urlopen(url).read().decode('utf-8'))
+            mixml2 = ET.fromstring(urlreq.urlopen(url2).read().decode('utf-8'))
         except:
             return None
         buscar = 'body s b l d'
         encontrado = []
         for x in buscar.split():
             encontrado.append(mixml.findtext(x, ''))
+        encontrado.append(mixml2.findtext('body', ''))
         self._info = User._INFO(*encontrado)
         return self._info
 
     @property
-    def age(self):
-        return self.info.age
+    def age(self) -> int:
+        if not self.info.age:
+            return None
+        hoy = datetime.now()
+        birth = datetime.strptime(self.info.age, '%Y-%m-%d')
+        return (hoy - birth).days // 365
 
     @property
     def about(self):
@@ -725,9 +740,14 @@ class User:
         return self.info and self.info.country
 
     @property
+    def fullprofile(self):
+        return self.info and urlreq.unquote(self.info.fullprofile)
+
+    @property
     def gender(self):
         return self.info and self.info.gender.lower() or None
 
+    @property
     def premiumtime(self):
         return self.info and self.info.bgtime or None
 
@@ -2900,7 +2920,7 @@ class Room(WSConnection):
             msg.attach(self, args[1])
             self._addHistory(msg)
             if (msg.channel >= 4 or msg.badge) and msg.user not in [
-                self.owner] + list(self.mods):  # TODO
+                self.owner] + list(self.mods):  # TODO reducir
                 self._mods[msg.user] = self._parseFlags('82368',
                                                         ModFlags)  # TODO lo
                 # añade con el poder más básico y el badge
@@ -3224,10 +3244,11 @@ class Gestor:
                                 counter = 0
                             except Exception as sgai:  # socket.gaierror:  #
                                 # En caso de que no haya internet
-                                print('[{}][{:^5}] Aún no hay internet...[{'
-                                      '}]'.format(time.strftime('%I:%M:%S %p'),
-                                                  counter, sgai),
-                                      file = sys.stderr)
+                                print('[{}][{:^5}] Aún no hay internet.[{'
+                                      '}]'.format(
+                                        time.strftime('%I:%M:%S %p'),
+                                        counter, sgai),
+                                        file = sys.stderr)
                                 counter += 1
                                 time.sleep(10)
             self._tick()
