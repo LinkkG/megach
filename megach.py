@@ -1523,7 +1523,20 @@ class PM(WSConnection):
             msg = self._messageFormat(str(msg), html)
             for unimsg in msg:
                 self._sendCommand("msg", user, unimsg)
-                self._callEvent('onPMMessageSend', User(user), unimsg)
+                body, nameColor, fontSize = _clean_message(unimsg, pm = True)
+                self._callEvent('onPMMessageSend',
+                                User(user),
+                                Message(
+                                        body = body,
+                                        nameColor = nameColor,
+                                        fontSize = fontSize or '11',
+                                        puid = None,
+                                        raw = unimsg,
+                                        room = self,
+                                        time = time.time(),
+                                        unid = None,
+                                        user = self.user
+                                        ))
             return True
 
     def _write(self, data: bytes):
