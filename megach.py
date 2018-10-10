@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.3.4
+Version: 1.3.5
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.3.3'
+version = 'M1.3.5'
 version_info = version.split('.')
 debug = True
 ################################################################
