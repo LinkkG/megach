@@ -106,7 +106,6 @@ MessageFlags = {
     'CHANNEL_RED': 256, 'CHANNEL_BLUE': 2048, 'CHANNEL_MOD': 32768
     }
 
-
 Channels = {
     "white": 0, "red": 256, "blue": 2048, "mod": 32768
     }  # TODO darle uso
@@ -712,7 +711,7 @@ class User:
             mixml = ET.fromstring(urlreq.urlopen(url).read().decode('utf-8'))
             mixml2 = ET.fromstring(urlreq.urlopen(url2).read().decode('utf-8'))
         except:
-            return None
+            return User._INFO(*[''] * 6)
         buscar = 'body s b l d'
         encontrado = []
         for x in buscar.split():
@@ -733,7 +732,7 @@ class User:
     def about(self):
         return self.info.about and \
                _clean_message(urlreq.unquote(self.info.about))[
-            0] or None
+                   0] or None
 
     @property
     def country(self):
@@ -1517,7 +1516,7 @@ class PM(WSConnection):
         @param user: Usuario al que enviar el mensaje
         @param msg: Mensaje que se envia (string)
         """
-        if msg:
+        if msg and self.connected:
             if isinstance(user, User):  # TODO externalizar
                 user = user.name
             msg = self._messageFormat(str(msg), html)
@@ -1538,6 +1537,7 @@ class PM(WSConnection):
                                         user = self.user
                                         ))
             return True
+        return False
 
     def _write(self, data: bytes):
         if not self._wlock:
@@ -1638,7 +1638,6 @@ class PM(WSConnection):
         if not self._trackqueue.empty():
             self._trackqueue.get()
         self._trackqueue.put(args)
-
 
     def _rcmd_time(self, args):
         """Recibir tiempo del server y corregirlo"""
@@ -2066,7 +2065,7 @@ class Room(WSConnection):
             return self._history and self._history[-1] or None
         if isinstance(user, User):
             user = user.name
-        for x in reversed(list(self._history)[:]):
+        for x in reversed(self.history):
             if x.user.name == user:
                 return x
         return None
@@ -2558,7 +2557,7 @@ class Room(WSConnection):
 
     def _rcmd_blocked(self, args):  # TODO Que era todo esto?
         target = args[2] and User(args[2]) or ''
-        user = args[3] and User(args[3]) or None
+        user = User(args[3])
         if not target:
             msx = [msg for msg in self._history if msg.unid == args[0]]
             target = msx and msx[0].user or User('ANON')
@@ -2753,6 +2752,7 @@ class Room(WSConnection):
             self._callEvent("onConnect")
         else:
             self._callEvent("onReconnect")
+            self._connectattempts = 1
         # comprobar el tamaño máximo del  #  #
         # history y solicitar anteriores hasta llenar  # if len(  #  #
         # self._history) < self._history.maxlen and not self._nomore:  #
@@ -2934,10 +2934,8 @@ class Room(WSConnection):
             self._addHistory(msg)
             if (msg.channel >= 4 or msg.badge) and msg.user not in [
                 self.owner] + list(self.mods):  # TODO reducir
-                self._mods[msg.user] = self._parseFlags('82368',
-                                                        ModFlags)  # TODO lo
-                # añade con el poder más básico y el badge
-                self._mods[msg.user].isadmin = int('82368') & AdminFlags != 0
+                self._mods[msg.user] = self._parseFlags('0', ModFlags)
+                self._mods[msg.user].isadmin = False
             self._callEvent("onMessage", msg.user, msg)
 
     def _rcmd_ubw(self, args):  # TODO palabas desbaneadas ?)
@@ -3131,6 +3129,10 @@ class Gestor:
             self.mgr.removeTask(self)
 
     def findUser(self, name):
+        """
+        Regresa una lista con los nombres de salas en las que se encuentra el
+        usuario
+        """
         if isinstance(name, User):  # TODO externalizar
             name = name.name
         return [x.name for x in list(self._rooms.values()) if x.findUser(name)]
@@ -3248,13 +3250,15 @@ class Gestor:
                         # ConnectionResetError
                         # TODO esto no funciona si hay muchas salas
                         self.test = cre  # variable de depuración para android
-                        print('Conexión perdida, reintentando en 10 '
-                              'segundos...')
-                        counter = con.attempts or 1
+                        print('[%s]Conexión perdida, reintentando en 10 '
+                              'segundos...' % con)
+                        counter = con.attempts or 1  # Intentos de conexion a
+                        #  la sala
                         while counter:
                             try:
                                 con.reconnect()
                                 counter = 0
+                                # TODO asegurar el reinicio del contador
                             except Exception as sgai:  # socket.gaierror:  #
                                 # En caso de que no haya internet
                                 print('[{}][{:^5}] Aún no hay internet.[{'
@@ -3368,7 +3372,7 @@ class Gestor:
         Al ser baneado un anon en la sala
         @param room: Sala donde ocurre
         @param user: Usuario que banea
-        @param target: puede ser un User o None TODO debería ser un user
+        @param target: Usuario baneado
         """
         pass
 
@@ -3705,7 +3709,7 @@ class Gestor:
         @param user: Mod que se intentó actualizar
         @param reason: Razón del error (2=Enviado código incorrecto/inválido)
         """
-        # TODO documentar y cambiar reason a algo más práctico
+        # TODO Cambiar reason a algo más práctico
         pass
 
     def onUpdateProfile(self, room, user):
