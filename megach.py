@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.3.5
+Version: 1.4.0
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.3.5'
+version = 'M1.4.0'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -309,6 +309,73 @@ class Struct:
         return '<Struct>'
 
 
+class Task:
+    ALIVE = False
+    _INSTANCES = set()
+    _THREAD = None
+    _LOCK = threading.Lock()
+
+    @staticmethod
+    def _manage():
+        """Manage instances"""
+        with Task._LOCK:
+            if Task.ALIVE:
+                # Only one call at a time for this method is allowed
+                return
+            Task.ALIVE = True
+        while Task.ALIVE:
+            Task._tick()
+
+    @staticmethod
+    def _tick():
+        now = time.time()
+        for task in list(Task._INSTANCES):
+            try:
+                if task.target <= now:
+                    task.func(*task.args, **task.kw)
+                    if task.isInterval:
+                        task.target = task.timeout + now
+                    else:
+                        task.cancel()
+            except Exception as e:
+                print("Task error {}: {}".format(task.func, e))
+                task.cancel()
+        if not Task._INSTANCES:
+            with Task._LOCK:
+                Task.ALIVE = False
+
+    def __init__(self, timeout, func = None, interval = False, *args, **kw):
+        """
+        Inicia una tarea nueva
+        @param mgr: El dueño de esta tarea y el que la mantiene con vida
+        """
+        self.func = func
+        self.timeout = timeout
+        self.target = time.time() + timeout
+        self.isInterval = interval
+        self.args = args
+        self.kw = kw
+        Task._INSTANCES.add(self)
+        with Task._LOCK:
+            if not Task.ALIVE:
+                Task._THREAD = threading.Thread(target = Task._manage,
+                                                name = 'Task Manager',
+                                                args = [], kwargs = {})
+                Task._THREAD.start()
+
+    def __repr__(self):
+        return str(self)
+
+    def __str__(self):
+        return '<%s Task: "%s" [%s]>' % (
+            'Interval' if self.isInterval else 'Timeout',
+            self.func.__name__, self.timeout)
+
+    def cancel(self):
+        """Cancel task"""
+        with Task._LOCK:
+            if self in Task._INSTANCES:
+                Task._INSTANCES.remove(self)
 ################################################################
 # Inicio del bot
 ################################################################
@@ -965,7 +1032,6 @@ class Message:
         """Borrar el mensaje de la sala (Si es mod)"""
         self._room.deleteMessage(self)
 
-
 class WSConnection:
     """
     Base para manejar las conexiones con Mensajes y salas.
@@ -975,9 +1041,6 @@ class WSConnection:
     BIGMESSAGECUT = False
     MAXLEN = 2700  # Room is 2900, PM IS 12000
     PINGINTERVAL = 90  # Intervalo para enviar pings, Si llega a 300 se
-
-    # desconecta
-
     def __radd__(self, other):
         return str(other) + self.name
 
@@ -1297,7 +1360,7 @@ class WSConnection:
         self._callEvent('onPing')
 
     def setBgMode(self, modo):
-        """Activar el BG"""
+        """Activar el BG"""  # TODO modo por defecto
         self._bgmode = modo
         if self.connected:
             self._sendCommand('msgbg', str(self._bgmode))
@@ -3102,32 +3165,6 @@ class Gestor:
         """Invocado antes de empezar los demás procesos en main"""
         pass
 
-    class _Task:
-        def __repr__(self):
-            return '<%s Task: "%s" [%s]>' % (
-                'Interval' if self.isInterval else 'Timeout',
-                self.func.__name__, self.timeout)
-
-        def __str__(self):
-            return '<%s Task: "%s" [%s]>' % (
-                'Interval' if self.isInterval else 'Timeout',
-                self.func.__name__, self.timeout)
-
-        def __init__(self, mgr, func = None, timeout: float = None,
-                     interval: bool = False):
-            """
-            Inicia una tarea nueva
-            @param mgr: El dueño de esta tarea y el que la mantiene con vida
-            """
-            self.func = func
-            self.timeout = timeout
-            self.isInterval = interval
-            self.mgr = mgr
-
-        def cancel(self):
-            """Sugar for removeTask."""
-            self.mgr.removeTask(self)
-
     def findUser(self, name):
         """
         Regresa una lista con los nombres de salas en las que se encuentra el
@@ -3276,6 +3313,7 @@ class Gestor:
     def removeTask(self, task):
         """Eliminar una tarea"""
         if task in self._tasks:
+            task.cancel()
             self._tasks.remove(task)
 
     def stop(self):
@@ -3319,10 +3357,7 @@ class Gestor:
         @type tiempo int
         @param tiempo:intervalo
         """
-        task = self._Task(self, funcion, tiempo, True)
-        task.target = time.time() + tiempo
-        task.args = args
-        task.kw = kwargs
+        task = Task(tiempo, funcion, True, args,kwargs)
         self._tasks.add(task)
         return task
 
@@ -3332,32 +3367,12 @@ class Gestor:
         @param tiempo: Tiempo en segundos hasta que se ejecute la función
         @param funcion: La función que será invocada
         """
-        task = self._Task(self)
-        task.target = time.time() + tiempo
-        task.timeout = tiempo
-        task.func = funcion
-        task.isInterval = False
-        task.args = args
-        task.kw = kwargs
+        task = Task(tiempo, funcion, False, args, kwargs)
         self._tasks.add(task)
         return task
 
     def setNameColor(self, hexcolor):
         self.user._nameColor = hexcolor
-
-    def _tick(self):
-        now = time.time()
-        for task in set(self._tasks):
-            try:
-                if task.target <= now:
-                    task.func(*task.args, **task.kw)
-                    if task.isInterval:
-                        task.target = now + task.timeout
-                    else:
-                        task.cancel()
-            except Exception as e:
-                print('Task error {}: {}'.format(task.func, e))
-                task.cancel()
 
     def onAnnouncementUpdate(self, room, active):
         """
