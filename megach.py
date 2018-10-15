@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.4.0
+Version: 1.5.0
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.4.0'
+version = 'M1.5.0'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -668,6 +668,7 @@ class User:
         self._info = None
         self._ip = ''
         self._isanon = not len(name) or name[0] in '!#'
+        self._ispremium = None
         self._mbg = False
         self._msgs = list()  # TODO Mantener historial reciente de un usuario
         self._mrec = False
@@ -730,6 +731,9 @@ class User:
         """Soy anon?"""
         return self._isanon
 
+    @property
+    def ispremium(self):
+        return self._ispremium
     @property
     def name(self) -> str:
         """Nombre del usuario"""
@@ -872,7 +876,6 @@ class Message:
         self._raw = ""
         self._hasbg = False
         self._ip = None
-        self._ispremium = False
         self._unid = ""
         self._puid = ""
         self._nameColor = "000"
@@ -953,9 +956,7 @@ class Message:
     def ip(self):
         return self._ip
 
-    @property
-    def ispremium(self):
-        return self._ispremium
+
 
     @property
     def msgid(self):
@@ -1033,184 +1034,70 @@ class Message:
         self._room.deleteMessage(self)
 
 class WSConnection:
-    """
-    Base para manejar las conexiones con Mensajes y salas.
-    No Instanciar directamente
-    """
-    # True: cortar mensajes grandes, False: enviarlos en trozos
-    BIGMESSAGECUT = False
-    MAXLEN = 2700  # Room is 2900, PM IS 12000
-    PINGINTERVAL = 90  # Intervalo para enviar pings, Si llega a 300 se
-    def __radd__(self, other):
-        return str(other) + self.name
-
-    def __add__(self, other):
-        return self.name + str(other)
-
-    def __dir__(self):
-        return [x for x in
-                set(list(self.__dict__.keys()) + list(dir(type(self)))) if
-                x[0] != '_']
-
-    def __str__(self):
-        return self.name
-
-    def __repr__(self):
-        return "<%s: %s>" % (self.__class__.__name__, self.name)
-
-    def __init__(self, mgr: object = None, name: str = '', password: str = '',
-                 server: str = '', port: str = None, origin: str = '') -> None:
+    def __init__(self, server, port, origin, name = 'WSConnection'):
         """
-        @param mgr: El dueño de esta conexión
-        @param name: El nombre de usuario si no hay se conecta como anon
-        @param password: La clave si no hay se usará un nombre temporal o anon
-        @param server:
-        @param port:
-        @param origin:
+        Crear un nuevo proceso que se sustente solito
+        en un tread solano TODO
         """
-        # TODO documentar
-        self._bgmode = 0
+        self._connectiontime = 0  # Hora de inicio de la conexión
+        self._correctiontime = 0  # Diferencia entre localtime y servertime
         self._connectattempts = 0
         self._connected = False
-        self._currentaccount = [name, password]
-        self._currentname = name  # El usuario de esta conexión
         self._firstCommand = True  # Si es el primer comando enviado
         self._headers = b''  # Las cabeceras que se enviaron en la petición
-        self._name = name  # El nombre de la sala o conexión
-        self._origin = origin or 'http://st.chatango.com'
-        self._password = password  # La clave de esta conexión
+        self._origin = origin or server
         self._port = port or 443  # El puerto de la conexión
-        self._rbuf = b''  # El buffer de lectura  de la conexión
         self._server = server
+        self._name = name
         self._connectiontime = 0  # Hora del servidor a la que se entra
-        self._correctiontime = 0  # Diferencia entre la hora local y la del
-        # server
-        self._serverheaders = b''  # Las caberceras de respuesta que envió el
-        #  servidor
+        self._serverheaders = b''  # Las caberceras de respuesta recibidas
         self._sock = None
-        self._user = User(name)
+        self._rbuf = b''  # El buffer de lectura  de la conexión
         self._wbuf = b''  # El buffer de escritura a la conexión
-        self._wlock = False  # Si está activo no se debe envíar nada al
-        # buffer de escritura
-        self._wlockbuf = b''  # Buffer de escritura bloqueado, se almacena
-        # aquí cuando el lock está activo
-        self.mgr = mgr  # El dueño de esta conexión
-        if mgr:  # Si el manager está activo iniciar la conexión directamente
-            self._bgmode = int(self.mgr.bgmode)
-            self.connect()
+        self._wlock = False  # Si no se debe envíar nada al wbuf
+        self._wlockbuf = b''  # Cuando no se manda al wbuf, viene acá
+        self._tlock = threading.Lock()
+        self._terminator = ['\x00', '\r\n\x00']
+        self._pingdata = ''
 
-    @property
-    def account(self) -> str:
-        """
-        La cuenta que se está usando, evitar mostrar la password en público
-        """
-        cuenta = User(self._currentaccount[0])
-        cuenta._password = self._currentaccount[1]
-        return cuenta
-
-    @property
-    def attempts(self) -> int:
-        """Los intentos de conexión antes de tener exito o rendirse"""
-        return self._connectattempts
-
-    @property
-    def connected(self) -> bool:
-        """Estoy conectado?"""
-        return self._connected
-
-    @property
-    def currentname(self) -> str:
-        """El nombre de usuario que está usando el bot en la conexión"""
-        return self._currentname
-
-    @property
-    def name(self) -> str:
-        """El nombre de la conexión (sala o PM)"""
-        return self._name
-
-    @property
-    def sock(self) -> socket.socket:
-        """El socket usado"""
-        return self._sock
-
-    @property
-    def localtime(self):
-        """Tiempo del servidor"""
-        return time.localtime(time.time() + self._correctiontime)
-
-    @property
-    def time(self):
-        return time.time() + self._correctiontime
-
-    @property
-    def user(self) -> User:
-        """El usuario de esta conexión"""
-        return self._user
-
-    @property
-    def wbuf(self) -> bytes:
-        """Buffer de escritura"""
-        return self._wbuf
-
-    def connect(self) -> bool:
-        """ Iniciar la conexión con el servidor y llamar a _handshake() """
-        if not self._connected:
-            self._connectattempts += 1
-            self._sock = socket.socket()
-            # try:
-            # TODO Comprobar, si no hay internet hay error acá
-            self._sock.connect((self._server, self._port))
-            self._sock.setblocking(False)
-            self._handShake()
-            # except:
-            #    self._disconnect()
-            #    return False
-            return True
-        return False
+    def _callEvent(self, evt, *args, **kw):
+        if self.mgr and hasattr(self.mgr, evt):
+            getattr(self.mgr, evt)(self, *args, **kw)
+            self.mgr.onEventCalled(self, evt, *args, **kw)
+        elif self.mgr:
+            print('Evento no controlado ' + str(evt))
 
     def _disconnect(self):
         """
         Privado: Solo usar para reconneción
         Cierra la conexión y detiene los pings, el objeto sigue existiendo
         """
-        with self.mgr.connlock:
-            self._connected = False
-            if self._sock is not None:
-                self._sock.close()
-            # TODO do i need to clear session ids?
-            self._sock = None
-            self._serverheaders = b''
-            self._pingTask.cancel()
-
-    def disconnect(self):
-        """Público, desconección completa"""
-        self._disconnect()
-        if not isinstance(self, PM):
-            if self.name in self.mgr.roomnames:
-                self.mgr.leaveRoom(self)
-            else:
-                self._callEvent('onDisconnect')
-        else:
-            self._callEvent('onPMDisconnect')
-
-    def reconnect(self):
-        """
-        Vuelve a iniciar la conexión a la Sala/PM
-        """
-        self._disconnect()
-        self._reset()
-        self.connect()
-
-    def _reset(self):
-        """
-        Reinicia algunas variables para la conexión
-        ADVERTENCIA usar con cuidado
-        """
-        self._headers = b''
+        self._connected = False
+        if self._sock is not None:
+            self._sock.close()
+        # TODO do i need to clear session ids?
+        self._sock = None
         self._serverheaders = b''
-        self._wbuf = b''  # El buffer de escritura a la conexión
-        self._wlock = False  # Bloquear el buffer de escritura
-        self._wlockbuf = b''  # Buffer de escritura bloqueada
+        self._pingTask.cancel()
+
+    def connect(self) -> bool:
+        """ Iniciar la conexión con el servidor y llamar a _handshake() """
+        if not self._connected:
+            self._connectattempts += 1
+            self._sock = socket.socket()
+            # TODO Comprobar, si no hay internet hay error acá
+            self._sock.connect((self._server, self._port))
+            self._sock.setblocking(False)
+            self._handShake()
+            self._pingTask = Task(90, self._ping, True)
+            self._connected = True
+            self._fedder = threading.Thread(
+                    target = self._feed,
+                    name = self._name or 'WSConnection'
+                    )
+            self._fedder.start()
+            return True
+        return False
 
     def _handShake(self):
         """
@@ -1228,15 +1115,84 @@ class WSConnection:
                                         WS.genseckey(), WS.VERSION).encode()
         self._wbuf = self._headers
         self._setWriteLock(True)
-        self._pingTask = self.mgr.setInterval(self.PINGINTERVAL, self.ping)
+        # self._pingTask = self.mgr.setInterval(self.PINGINTERVAL, self.ping)
 
-    def _login(self):
-        """Sobreescribir. PM y Room lo hacen diferente"""
-        pass
+    def _feed(self):
+        while self._connected:
+            rd, wr, sp = select.select([self._sock],
+                                       (self._wbuf and [self._sock] or []), [],
+                                       0.2)
+            for x in wr:
+                try:
+                    # if self._name == 'PM':
+                    #    print("%s Enviando %s"%(str(self).upper(),
+                    # str(self._wbuf)))
+                    with self._tlock:
+                        size = self._sock.send(self._wbuf)
+                    self._wbuf = self._wbuf[size:]
+                except Exception as e:
+                    if debug:
+                        print("Error sock.send " + str(e), sys.stderr)
+            for x in rd:
+                try:
+                    chunk = None
+                    if self._sock:
+                        with self._tlock:
+                            chunk = self._sock.recv(1024)
 
-    def _callEvent(self, evt, *args, **kw):
-        getattr(self.mgr, evt)(self, *args, **kw)
-        self.mgr.onEventCalled(self, evt, *args, **kw)
+                    if chunk:
+                        #    if self._name == 'PM':
+                        #        print("%s GOT %s"%(str(self).upper(),
+                        # str(chunk)))
+                        self.onData(chunk)
+                    elif chunk is not None:
+                        # Conexión perdida
+                        if not self._serverheaders:  # Nunca se recibió
+                            # comandos de la conexión
+                            self.disconnect()
+                        else:
+                            self.reconnect()  # TODO ConnectionRefusedError
+                except socket.error as cre:  # socket.error -
+                    # ConnectionResetError
+                    # TODO esto no funciona si hay muchas salas
+                    self.test = cre  # variable de depuración para android
+                    print('[%s]Conexión perdida, reintentando en 10 '
+                          'segundos...%s' % (self, cre))
+                    counter = self._connectattempts or 1  # Intentos de
+                    # conexion a
+                    #  la sala
+                    while counter:
+                        try:
+                            self.reconnect()
+                            counter = 0
+                            # TODO asegurar el reinicio del contador
+                        except Exception as sgai:  # socket.gaierror:  #
+                            # En caso de que no haya internet
+                            print('[{}][{:^5}] Aún no hay internet.[{}]'.format(
+                                    time.strftime('%I:%M:%S %p'),
+                                    counter, sgai),
+                                    file = sys.stderr)
+                            counter += 1
+                            time.sleep(10)
+
+    def _sendCommand(self, *args):
+        """
+        Envía un comando al servidor
+        @type args: [str, str, ...]
+        @param args: command and list of arguments
+        """
+        with self._tlock:
+            if self._firstCommand:
+                terminator = self._terminator[0]
+                self._firstCommand = False
+            else:
+                terminator = self._terminator[1]
+            cmd = ":".join(str(x) for x in args) + terminator
+            self._write(WS.encode(cmd))
+
+    def _ping(self):
+        self._sendCommand('')
+        # TODO self._callEvent('onPing')
 
     def _process(self, data: str):
         """
@@ -1262,6 +1218,187 @@ class WSConnection:
             print('[{}][{:^10.10}]UNKNOWN DATA "{}"'.format(
                     time.strftime('%I:%M:%S %p'), self.name, ':'.join(data)),
                     file = sys.stderr)
+
+    def _setWriteLock(self, lock: bool):
+        self._wlock = lock
+        if not self._wlock and self._wlockbuf:
+            self._wbuf += self._wlockbuf
+            self._wlockbuf = b''
+
+    def _write(self, data: bytes):
+        """Escribir datos en el buffer de envío al servidor"""
+        if self._wlock:
+            self._wlockbuf += data
+        else:
+            self._wbuf += data
+
+    @property
+    def attempts(self) -> int:
+        """Los intentos de conexión antes de tener exito o rendirse"""
+        return self._connectattempts
+
+    @property
+    def connected(self) -> bool:
+        """Estoy conectado?"""
+        return self._connected
+
+    @property
+    def localtime(self):
+        """Tiempo del servidor"""
+        return time.localtime(time.time() + self._correctiontime)
+
+    @property
+    def time(self):
+        return time.time() + self._correctiontime
+
+    @property
+    def wbuf(self) -> bytes:
+        """Buffer de escritura"""
+        return self._wbuf
+
+    def onData(self, data: bytes):
+        """
+        Al recibir datos del servidor
+        @param data: Los datos recibidos y sin procesar
+        """
+        self._rbuf += data  # Agregar los datos al buffer de lectura
+        if not self._serverheaders and b'\r\n' * 2 in data:
+            self._serverheaders, self._rbuf = self._rbuf.split(b'\r\n' * 2, 1)
+            clave = WS.checkHeaders(self._serverheaders)
+            esperada = WS.getServerSeckey(self._headers)
+            if clave != esperada and debug:
+                if debug:
+                    print('Un proxy ha enviado una respuesta en caché',
+                          file = sys.stderr)
+            self._setWriteLock(False)
+
+        else:
+            r = WS.checkFrame(self._rbuf)
+            while r:  # Comprobar todos los frames en el buffer de lectura
+                frame = self._rbuf[:r]
+                self._rbuf = self._rbuf[r:]
+                # Información sobre el frame recibido
+                info = WS.frameInfo(frame)
+                payload = WS.getPayload(frame)
+                if info.opcode == WS.CLOSE:
+                    # El servidor quiere cerrar la conexión
+                    pass  # TODO detectar este caso
+                elif info.opcode == WS.TEXT:
+                    # El frame contiene datos
+                    self._process(payload)
+                elif debug:
+                    print('Frame no controlado: "{}"'.format(payload),
+                          file = sys.stderr)
+                r = WS.checkFrame(self._rbuf)
+
+    def reconnect(self):
+        """
+        Vuelve a iniciar la conexión a la Sala/PM
+        """
+        self._disconnect()
+        self._reset()
+        self.connect()
+
+    def _rcmd_(self, pong = None):
+        """Al recibir un pong"""
+        self._callEvent('onPong')
+
+    def _reset(self):
+        self._serverheaders = b''
+        self._wbuf = b''  # El buffer de escritura a la conexión
+        self._wlock = False  # Bloquear el buffer de escritura
+        self._wlockbuf = b''  # Buffer de escritura bloqueada
+
+
+class CHConnection(WSConnection):
+    """
+    Base para manejar las conexiones con Mensajes y salas.
+    No Instanciar directamente
+    """
+    # True: cortar mensajes grandes, False: enviarlos en trozos
+    BIGMESSAGECUT = False
+    MAXLEN = 2700  # Room is 2900, PM IS 12000
+    PINGINTERVAL = 90  # Intervalo para enviar pings, Si llega a 300 se
+    def __radd__(self, other):
+        return str(other) + self.name
+
+    def __add__(self, other):
+        return self.name + str(other)
+
+    def __dir__(self):
+        return [x for x in
+                set(list(self.__dict__.keys()) + list(dir(type(self)))) if
+                x[0] != '_']
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return "<%s: %s>" % (self.__class__.__name__, self.name)
+
+    def __init__(self, mgr, name, server, account):
+        # Ports 8080 and 8081 ar http, 443 is https
+        super().__init__(server, 8080, 'http://st.chatango.com', name)
+        self._bgmode = 0
+        self._currentaccount = account
+        self._currentname = name  # El usuario de esta conexión
+        self._correctiontime = 0  # Diferencia entre la hora local y el server
+        self._password = account[1]  # La clave de esta conexión
+        self._user = User(account[0])
+        self.mgr = mgr
+        if mgr:  # Si el manager está activo iniciar la conexión directamente
+            self._bgmode = int(self.mgr.bgmode)
+            self.connect()
+
+    def connect(self):
+        super().connect()
+        self._login()
+
+    @property
+    def account(self) -> str:
+        """
+        La cuenta que se está usando, evitar mostrar la password en público
+        """
+        cuenta = User(self._currentaccount[0])
+        cuenta._password = self._currentaccount[1]
+        return cuenta
+
+    @property
+    def currentname(self) -> str:
+        """El nombre de usuario que está usando el bot en la conexión"""
+        return self._currentname
+
+    @property
+    def name(self) -> str:
+        """El nombre de la conexión (sala o PM)"""
+        return self._name
+
+    @property
+    def sock(self) -> socket.socket:
+        """El socket usado"""
+        return self._sock
+
+    @property
+    def user(self) -> User:
+        """El usuario de esta conexión"""
+        return self._user
+
+    def disconnect(self):
+        """Público, desconección completa"""
+        self._disconnect()
+        if not isinstance(self, PM):
+            if self.mgr and self.name in self.mgr.roomnames:
+                self.mgr.leaveRoom(self)
+                # TODO cambiar este if
+            else:
+                self._callEvent('onDisconnect')
+        else:
+            self._callEvent('onPMDisconnect')
+
+    def _login(self):
+        """Sobreescribir. PM y Room lo hacen diferente"""
+        pass
+
 
     def _messageFormat(self, msg: str, html: bool):
         if len(msg) + msg.count(' ') * 5 > self.MAXLEN:
@@ -1318,83 +1455,11 @@ class WSConnection:
             formt.format(nc, str(self.user.fontSize), fc, self.user.fontFace,
                          unimsg) for unimsg in msg]
 
-    def onData(self, data: bytes):
-        """
-        Al recibir datos del servidor
-        @param data: Los datos recibidos y sin procesar
-        """
-        self._rbuf += data  # Agregar los datos al buffer de lectura
-        if not self._serverheaders and b'\r\n' * 2 in data:
-            self._serverheaders, self._rbuf = self._rbuf.split(b'\r\n' * 2, 1)
-            clave = WS.checkHeaders(self._serverheaders)
-            esperada = WS.getServerSeckey(self._headers)
-            if clave != esperada and debug:
-                if debug:
-                    print('Un proxy ha enviado una respuesta en caché',
-                          file = sys.stderr)
-            self._setWriteLock(False)
-            self._login()
-        else:
-            r = WS.checkFrame(self._rbuf)
-            while r:  # Comprobar todos los frames en el buffer de lectura
-                frame = self._rbuf[:r]
-                self._rbuf = self._rbuf[r:]
-                # Información sobre el frame recibido
-                info = WS.frameInfo(frame)
-                payload = WS.getPayload(frame)
-                if info.opcode == WS.CLOSE:
-                    # El servidor quiere cerrar la conexión
-                    pass  # TODO detectar este caso
-                elif info.opcode == WS.TEXT:
-                    # El frame contiene datos
-                    self._process(payload)
-                elif debug:
-                    print('Frame no controlado: "{}"'.format(payload),
-                          file = sys.stderr)
-                r = WS.checkFrame(self._rbuf)
-
-    def ping(self):
-        """Enviar un ping al servidor para mantener la conexión activa"""
-        # TODO Calcular el proximo ping
-        self._sendCommand('')
-        self._callEvent('onPing')
-
     def setBgMode(self, modo):
         """Activar el BG"""  # TODO modo por defecto
         self._bgmode = modo
-        if self.connected:
+        if self.connected and self.user.ispremium:
             self._sendCommand('msgbg', str(self._bgmode))
-
-    def _sendCommand(self, *args):
-        """
-        Envía un comando al servidor
-        @type args: [str, str, ...]
-        @param args: command and list of arguments
-        """
-        if self._firstCommand:
-            terminator = "\x00"
-            self._firstCommand = False
-        else:
-            terminator = "\r\n\x00"
-        cmd = ":".join(str(x) for x in args) + terminator
-        self._write(WS.encode(cmd))
-
-    def _setWriteLock(self, lock: bool):
-        self._wlock = lock
-        if not self._wlock and self._wlockbuf:
-            self._wbuf += self._wlockbuf
-            self._wlockbuf = b''
-
-    def _write(self, data: bytes):
-        """Escribir datos en el buffer de envío al servidor"""
-        if self._wlock:
-            self._wlockbuf += data
-        else:
-            self._wbuf += data
-
-    def _rcmd_(self, pong = None):
-        """Al recibir un pong"""
-        self._callEvent('onPong')
 
     def _rcmd_premium(self, args):
         # TODO el tiempo mostrado usa la hora del server
@@ -1408,7 +1473,7 @@ class WSConnection:
         self._callEvent('onFloodWarning')
 
 
-class PM(WSConnection):
+class PM(CHConnection):
     """
     Clase Base para la conexiones con la mensajería privada de chatango
     """
@@ -1426,7 +1491,7 @@ class PM(WSConnection):
         @param name: Nombre del usuario
         @param password: Contraseña para la conexión
         """
-        super().__init__(name = name, password = password)
+
         self._auth_re = re.compile(r"auth\.chatango\.com ?= ?([^;]*)",
                                    re.IGNORECASE)
         self._blocklist = set()
@@ -1434,16 +1499,12 @@ class PM(WSConnection):
         self._name = 'PM'
         self._currentname = name
         # TODO Si el puerto falla, aumentar en uno hasta cierto límte
-        self._port = 8080
-        self._server = 'c1.chatango.com'
         # self._server = 'i0.chatango.com'  # TODO
         self._status = dict()
         self.mgr = mgr
-        if self.mgr:
-            self._bgmode = int(self.mgr.bgmode)
-            self.connect()
         self._trackqueue = queue.Queue()
         self._pmLock = threading.Lock()
+        super().__init__(mgr, 'PM', 'c1.chatango.com', (name, password))
 
     @property
     def blocklist(self):
@@ -1758,7 +1819,7 @@ class PM(WSConnection):
         self._callEvent("onPMContactOnline", user)
 
 
-class Room(WSConnection):
+class Room(CHConnection):
     """
     Base para manejar las conexiones con las salas. Hereda de WSConnection y
     tiene todas sus propiedades
@@ -1773,12 +1834,12 @@ class Room(WSConnection):
     def __init__(self, name: str, mgr: object = None, account: tuple = None):
         # TODO , server = None, port = None, uid = None):
         # TODO not account start anon
-        super().__init__(name = account[0], password = account[1])
+
         # Configuraciones
         self._badge = 0
         self._channel = 0
-        self._currentaccount = account
-        self._currentname = account[0]
+        self._currentaccount = account or ('', '')
+        self._currentname = account and account[0] or ''
         # Por que no guardar una configuración de esto por sala?
         self._maxHistoryLength = Gestor.maxHistoryLength
         # Datos del chat
@@ -1793,7 +1854,6 @@ class Room(WSConnection):
         self._nameColor = ''
         self._port = 8080  # TODO
         self._rbuf = b''
-        self._server = getServer(name)  # TODO
         self._connectiontime = 0
         self._recording = 0
         self._silent = False
@@ -1814,10 +1874,11 @@ class Room(WSConnection):
         # self.imsgs_rendered = False # TODO
         # TODO Propenso a errores y retrasos
         self._nomore = False  # Indica si el chat tiene más mensajes
-        self.mgr = mgr
-        if self.mgr:
-            self._bgmode = int(self.mgr.bgmode)
-            super().connect()
+        # self.mgr = mgr
+        super().__init__(mgr, name, getServer(name), account or ('', ''))
+        # if self.mgr:
+        # self._bgmode = int(self.mgr.bgmode)
+        #super().connect()
 
         # TODO
 
@@ -2879,7 +2940,6 @@ class Room(WSConnection):
         self._waitingmore = 0  # TODO revisar
 
     def _rcmd_ok(self, args):  # TODO
-        self._connected = True
         self._owner = User(args[0])
         self._puid = args[1]  # TODO
         self._authtype = args[2]  # M=Ok, N= ? TODO tipo C
@@ -3089,6 +3149,7 @@ class Gestor:
         self._pm = None
         self._badconns = queue.Queue()
         self.bgmode = False
+        self._pm = pm
         if pm:
             self._pm = PM(mgr = self, name = self.name,
                           password = self.password)
@@ -3208,6 +3269,8 @@ class Gestor:
             account = cuenta
         if room not in self._rooms:
             # self._rooms[room] = Room(room, self, account)
+            # self._rooms[room.lower()]=Room(room.lower(),self,account)
+            #self._rooms[room.lower()]=
             self._colasalas.put((room.lower(), account))
             return True
         else:
@@ -3237,7 +3300,12 @@ class Gestor:
         self._jt.daemon = True
         self._jt.start()
         while self._running:
-            # try:
+            pass
+            # room, account = self._colasalas.get()
+            # con = Room(room, self, account)
+            # self._rooms[room] = con
+            # Every room makes this on its own
+            """"# try:
             if self._running:
                 with self.connlock:
                     conns = self.getConnections()
@@ -3305,7 +3373,9 @@ class Gestor:
                                         file = sys.stderr)
                                 counter += 1
                                 time.sleep(10)
-            self._tick()
+            """
+            #self._tick()
+
         # Finish
         for conn in self.getConnections():
             conn.disconnect()
