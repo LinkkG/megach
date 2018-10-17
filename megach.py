@@ -864,14 +864,14 @@ class Message:
     TODO revisar
     """
 
-    def __init__(self, **kw):
+    def __init__(self, body = None, **kw):
         """
         :param kw:Parámetros del mensaje
         """
         self._msgid = None
         self._time = None
         self._user = None
-        self._body = None
+        self._body = body
         self._room = None
         self._raw = ""
         self._hasbg = False
@@ -1034,6 +1034,7 @@ class Message:
         self._room.deleteMessage(self)
 
 class WSConnection:
+    _WSLOCK = threading.Lock()
     def __init__(self, server, port, origin, name = 'WSConnection'):
         """
         Crear un nuevo proceso que se sustente solito
@@ -1144,7 +1145,8 @@ class WSConnection:
                         #    if self._name == 'PM':
                         #        print("%s GOT %s"%(str(self).upper(),
                         # str(chunk)))
-                        self.onData(chunk)
+                        with WSConnection._WSLOCK:
+                            self.onData(chunk)
                     elif chunk is not None:
                         # Conexión perdida
                         if not self._serverheaders:  # Nunca se recibió
@@ -3427,7 +3429,7 @@ class Gestor:
         @type tiempo int
         @param tiempo:intervalo
         """
-        task = Task(tiempo, funcion, True, args,kwargs)
+        task = Task(tiempo, funcion, True, *args, **kwargs)
         self._tasks.add(task)
         return task
 
@@ -3437,7 +3439,7 @@ class Gestor:
         @param tiempo: Tiempo en segundos hasta que se ejecute la función
         @param funcion: La función que será invocada
         """
-        task = Task(tiempo, funcion, False, args, kwargs)
+        task = Task(tiempo, funcion, False, *args, **kwargs)
         self._tasks.add(task)
         return task
 
