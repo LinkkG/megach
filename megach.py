@@ -1058,8 +1058,10 @@ class WSConnection:
         self._wlock = False  # Si no se debe envíar nada al wbuf
         self._wlockbuf = b''  # Cuando no se manda al wbuf, viene acá
         self._tlock = threading.Lock()
+        self._connlock = threading.Lock()
         self._terminator = ['\x00', '\r\n\x00']
         self._pingdata = ''
+        self._fedder = None
 
     def _callEvent(self, evt, *args, **kw):
         if self.mgr and hasattr(self.mgr, evt):
@@ -1092,11 +1094,12 @@ class WSConnection:
             self._handShake()
             self._pingTask = Task(90, self._ping, True)
             self._connected = True
-            self._fedder = threading.Thread(
-                    target = self._feed,
-                    name = self._name or 'WSConnection'
-                    )
-            self._fedder.start()
+            if not self._fedder:
+                self._fedder = threading.Thread(
+                        target = self._feed,
+                        name = self._name or 'WSConnection'
+                        )
+                self._fedder.start()
             return True
         return False
 
@@ -1130,7 +1133,7 @@ class WSConnection:
                     # str(self._wbuf)))
                     with self._tlock:
                         size = self._sock.send(self._wbuf)
-                    self._wbuf = self._wbuf[size:]
+                        self._wbuf = self._wbuf[size:]
                 except Exception as e:
                     if debug:
                         print("Error sock.send " + str(e), sys.stderr)
@@ -1149,33 +1152,37 @@ class WSConnection:
                             self.onData(chunk)
                     elif chunk is not None:
                         # Conexión perdida
-                        if not self._serverheaders:  # Nunca se recibió
-                            # comandos de la conexión
-                            self.disconnect()
-                        else:
-                            self.reconnect()  # TODO ConnectionRefusedError
+                        with WSConnection._WSLOCK:
+                            if not self._serverheaders:  # Nunca se recibió
+                                # comandos de la conexión
+                                self.disconnect()
+                            else:
+                                self.reconnect()  # TODO ConnectionRefusedError
                 except socket.error as cre:  # socket.error -
                     # ConnectionResetError
                     # TODO esto no funciona si hay muchas salas
-                    self.test = cre  # variable de depuración para android
-                    print('[%s]Conexión perdida, reintentando en 10 '
+                    with WSConnection._WSLOCK:
+                        self.test = cre  # variable de depuración para android
+                        print('[%s]Conexión perdida, reintentando en 10 '
                           'segundos...%s' % (self, cre))
-                    counter = self._connectattempts or 1  # Intentos de
-                    # conexion a
-                    #  la sala
-                    while counter:
-                        try:
-                            self.reconnect()
-                            counter = 0
-                            # TODO asegurar el reinicio del contador
-                        except Exception as sgai:  # socket.gaierror:  #
-                            # En caso de que no haya internet
-                            print('[{}][{:^5}] Aún no hay internet.[{}]'.format(
-                                    time.strftime('%I:%M:%S %p'),
-                                    counter, sgai),
-                                    file = sys.stderr)
-                            counter += 1
-                            time.sleep(10)
+                        counter = self._connectattempts or 1  # Intentos de
+                        # conexion a
+                        #  la sala
+                        while counter:
+                            try:
+                                self.reconnect()
+                                counter = 0
+                                # TODO asegurar el reinicio del contador
+                            except Exception as sgai:  # socket.gaierror:  #
+                                # En caso de que no haya internet
+                                print(
+                                        '[{}][{:^5}] Aún no hay internet.[{'
+                                        '}]'.format(
+                                                time.strftime('%I:%M:%S %p'),
+                                                counter, sgai),
+                                        file = sys.stderr)
+                                counter += 1
+                                time.sleep(10)
 
     def _sendCommand(self, *args):
         """
@@ -1183,7 +1190,7 @@ class WSConnection:
         @type args: [str, str, ...]
         @param args: command and list of arguments
         """
-        with self._tlock:
+        with self._connlock:
             if self._firstCommand:
                 terminator = self._terminator[0]
                 self._firstCommand = False
@@ -1297,9 +1304,10 @@ class WSConnection:
         """
         Vuelve a iniciar la conexión a la Sala/PM
         """
-        self._disconnect()
-        self._reset()
-        self.connect()
+        with self._tlock:
+            self._disconnect()
+            self._reset()
+            self.connect()
 
     def _rcmd_(self, pong = None):
         """Al recibir un pong"""
@@ -1343,10 +1351,12 @@ class CHConnection(WSConnection):
         super().__init__(server, 8080, 'http://st.chatango.com', name)
         self._bgmode = 0
         self._currentaccount = account
-        self._currentname = name  # El usuario de esta conexión
+        self._currentname = account and account[
+            0]  # El usuario de esta conexión
         self._correctiontime = 0  # Diferencia entre la hora local y el server
         self._password = account[1]  # La clave de esta conexión
         self._user = User(account[0])
+        self._logged = False
         self.mgr = mgr
         if mgr:  # Si el manager está activo iniciar la conexión directamente
             self._bgmode = int(self.mgr.bgmode)
@@ -1499,7 +1509,6 @@ class PM(CHConnection):
         self._blocklist = set()
         self._contacts = set()
         self._name = 'PM'
-        self._currentname = name
         # TODO Si el puerto falla, aumentar en uno hasta cierto límte
         # self._server = 'i0.chatango.com'  # TODO
         self._status = dict()
@@ -1841,7 +1850,6 @@ class Room(CHConnection):
         self._badge = 0
         self._channel = 0
         self._currentaccount = account or ('', '')
-        self._currentname = account and account[0] or ''
         # Por que no guardar una configuración de esto por sala?
         self._maxHistoryLength = Gestor.maxHistoryLength
         # Datos del chat
