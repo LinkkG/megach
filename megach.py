@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.0
+Version: 1.5.1
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.0'
+version = 'M1.5.1'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -349,6 +349,7 @@ class Task:
         Inicia una tarea nueva
         @param mgr: El dueño de esta tarea y el que la mantiene con vida
         """
+        self.mgr = None
         self.func = func
         self.timeout = timeout
         self.target = time.time() + timeout
@@ -360,7 +361,8 @@ class Task:
             if not Task.ALIVE:
                 Task._THREAD = threading.Thread(target = Task._manage,
                                                 name = 'Task Manager',
-                                                args = [], kwargs = {})
+                                                args = [], kwargs = {},
+                                                daemon = True)
                 Task._THREAD.start()
 
     def __repr__(self):
@@ -376,6 +378,10 @@ class Task:
         with Task._LOCK:
             if self in Task._INSTANCES:
                 Task._INSTANCES.remove(self)
+            if self.mgr:
+                self.mgr.removeTask(self)
+
+
 ################################################################
 # Inicio del bot
 ################################################################
@@ -734,6 +740,7 @@ class User:
     @property
     def ispremium(self):
         return self._ispremium
+
     @property
     def name(self) -> str:
         """Nombre del usuario"""
@@ -956,8 +963,6 @@ class Message:
     def ip(self):
         return self._ip
 
-
-
     @property
     def msgid(self):
         """ID del mensaje en la sala"""
@@ -1033,8 +1038,10 @@ class Message:
         """Borrar el mensaje de la sala (Si es mod)"""
         self._room.deleteMessage(self)
 
+
 class WSConnection:
     _WSLOCK = threading.Lock()
+
     def __init__(self, server, port, origin, name = 'WSConnection'):
         """
         Crear un nuevo proceso que se sustente solito
@@ -1086,6 +1093,7 @@ class WSConnection:
     def connect(self) -> bool:
         """ Iniciar la conexión con el servidor y llamar a _handshake() """
         if not self._connected:
+
             self._connectattempts += 1
             self._sock = socket.socket()
             # TODO Comprobar, si no hay internet hay error acá
@@ -1164,7 +1172,7 @@ class WSConnection:
                     with WSConnection._WSLOCK:
                         self.test = cre  # variable de depuración para android
                         print('[%s]Conexión perdida, reintentando en 10 '
-                          'segundos...%s' % (self, cre))
+                              'segundos...%s' % (self, cre))
                         counter = self._connectattempts or 1  # Intentos de
                         # conexion a
                         #  la sala
@@ -1329,6 +1337,7 @@ class CHConnection(WSConnection):
     BIGMESSAGECUT = False
     MAXLEN = 2700  # Room is 2900, PM IS 12000
     PINGINTERVAL = 90  # Intervalo para enviar pings, Si llega a 300 se
+
     def __radd__(self, other):
         return str(other) + self.name
 
@@ -1410,7 +1419,6 @@ class CHConnection(WSConnection):
     def _login(self):
         """Sobreescribir. PM y Room lo hacen diferente"""
         pass
-
 
     def _messageFormat(self, msg: str, html: bool):
         if len(msg) + msg.count(' ') * 5 > self.MAXLEN:
@@ -1888,7 +1896,7 @@ class Room(CHConnection):
         super().__init__(mgr, name, getServer(name), account or ('', ''))
         # if self.mgr:
         # self._bgmode = int(self.mgr.bgmode)
-        #super().connect()
+        # super().connect()
 
         # TODO
 
@@ -3280,7 +3288,7 @@ class Gestor:
         if room not in self._rooms:
             # self._rooms[room] = Room(room, self, account)
             # self._rooms[room.lower()]=Room(room.lower(),self,account)
-            #self._rooms[room.lower()]=
+            # self._rooms[room.lower()]=
             self._colasalas.put((room.lower(), account))
             return True
         else:
@@ -3384,7 +3392,7 @@ class Gestor:
                                 counter += 1
                                 time.sleep(10)
             """
-            #self._tick()
+            # self._tick()
 
         # Finish
         for conn in self.getConnections():
@@ -3393,7 +3401,6 @@ class Gestor:
     def removeTask(self, task):
         """Eliminar una tarea"""
         if task in self._tasks:
-            task.cancel()
             self._tasks.remove(task)
 
     def stop(self):
@@ -3438,6 +3445,7 @@ class Gestor:
         @param tiempo:intervalo
         """
         task = Task(tiempo, funcion, True, *args, **kwargs)
+        task.mgr = self
         self._tasks.add(task)
         return task
 
