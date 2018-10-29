@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.2
+Version: 1.5.3
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.2'
+version = 'M1.5.3'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1097,7 +1097,7 @@ class WSConnection:
         Privado: Solo usar para reconneción
         Cierra la conexión y detiene los pings, el objeto sigue existiendo
         """
-        self._connected = False
+
         if self._sock is not None:
             self._sock.close()
         # TODO do i need to clear session ids?
@@ -1105,6 +1105,7 @@ class WSConnection:
         self._serverheaders = b''
         if self._pingTask:
             self._pingTask.cancel()
+        self._connected = False
 
     def connect(self) -> bool:
         """ Iniciar la conexión con el servidor y llamar a _handshake() """
@@ -3424,6 +3425,13 @@ class Gestor:
     def stop(self):
         """Detiene al bot"""
         self._running = False
+        # TODO comprobar si todo esto es necesario
+        for x in self._tasks:
+            x.cancel()
+        for x in self.rooms:
+            x.disconnect()
+        if self.pm:
+            self.pm.disconnect()
 
     def enableBg(self, activo = True):
         """Enable background if available."""
