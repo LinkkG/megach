@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.1
+Version: 1.5.2
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.1'
+version = 'M1.5.2'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -293,6 +293,16 @@ def _parseNameColor(n: str) -> str:
     # probably is already the name
     return _clean_message(n)[1]
 
+
+def _fontFormat(text):
+    formats = {'/': 'I', '\*': 'B', '_': 'U'}
+    for f in formats:
+        find = '%s([\w\d]+?.*?[\w\d]+?)%s' % (f, f)
+        for x in re.findall(find, text):
+            original = f[-1] + x + f[-1]
+            cambio = '<' + formats[f] + '>' + x + '</' + formats[f] + '>'
+            text = text.replace(original, cambio)
+    return text
 
 ################################################################
 # Utils
@@ -1069,6 +1079,11 @@ class WSConnection:
         self._terminator = ['\x00', '\r\n\x00']
         self._pingdata = ''
         self._fedder = None
+        self._pingTask = None
+
+    def __del__(self):
+        print("Desconectado sala en el aire")
+        self._disconnect()
 
     def _callEvent(self, evt, *args, **kw):
         if self.mgr and hasattr(self.mgr, evt):
@@ -1088,7 +1103,8 @@ class WSConnection:
         # TODO do i need to clear session ids?
         self._sock = None
         self._serverheaders = b''
-        self._pingTask.cancel()
+        if self._pingTask:
+            self._pingTask.cancel()
 
     def connect(self) -> bool:
         """ Iniciar la conexión con el servidor y llamar a _handshake() """
@@ -1444,6 +1460,7 @@ class CHConnection(WSConnection):
         nc = self.user.nameColor
         if not html:
             msg = html2.escape(msg, quote = False)
+            msg = _fontFormat(msg)
         msg = msg.replace('\n', '\r').replace('~', '&#126;')
         for x in 'b i u'.split():
             msg = msg.replace('<%s>' % x, '<%s>' % x.upper()).replace(
@@ -2267,6 +2284,7 @@ class Room(CHConnection):
             canal = (((canal & 1) | (canal & 2) << 2) << 8 | (canal & 4) << 13)
         if msg is None:
             return False
+
         msg = self._messageFormat(str(msg), html)
         badge = int(badge) if badge else self.badge
         for x in msg:
