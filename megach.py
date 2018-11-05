@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.3
+Version: 1.5.4
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.3'
+version = 'M1.5.4'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -297,11 +297,27 @@ def _parseNameColor(n: str) -> str:
 def _fontFormat(text):
     formats = {'/': 'I', '\*': 'B', '_': 'U'}
     for f in formats:
-        find = '%s([\w\d]+?.*?[\w\d]+?)%s' % (f, f)
-        for x in re.findall(find, text):
+        f1, f2 = set(formats.keys()) - {f}
+        find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[^\s]){2}'.format(f1, f2, f)
+        for x in re.findall(find, ' ' + text):
             original = f[-1] + x + f[-1]
             cambio = '<' + formats[f] + '>' + x + '</' + formats[f] + '>'
             text = text.replace(original, cambio)
+    return text
+
+
+def _videoImagePMFormat(text):
+    for x in re.findall('(https://[^\s]+outube.com/watch\?v=([^\s]+))', text):
+        original = x[0]
+        cambio = '<i s="vid://yt:%s" w="126" h="96"/>' % x[1]
+        text = text.replace(original, cambio)
+    for x in re.findall('(https://[^\s]+outu.be/([^\s]+))', text):
+        original = x[0]
+        cambio = '<i s="vid://yt:%s" w="126" h="96"/>' % x[1]
+        text = text.replace(original, cambio)
+    for x in re.findall("http://[^\s]+?.jpg|https://[^\s]+?.jpg", text):
+        text = text.replace(x, '<i s="%s" w="70.45" h="125"/>' % x)
+    print(text)
     return text
 
 ################################################################
@@ -1051,6 +1067,7 @@ class Message:
 
 class WSConnection:
     _WSLOCK = threading.Lock()
+    _INSTANCES = set()
 
     def __init__(self, server, port, origin, name = 'WSConnection'):
         """
@@ -1343,6 +1360,9 @@ class WSConnection:
         self._wbuf = b''  # El buffer de escritura a la conexión
         self._wlock = False  # Bloquear el buffer de escritura
         self._wlockbuf = b''  # Buffer de escritura bloqueada
+        self._firstCommand = False
+        self._tlock = threading.Lock()
+        self._connlock = threading.Lock()
 
 
 class CHConnection(WSConnection):
@@ -1461,7 +1481,7 @@ class CHConnection(WSConnection):
         nc = self.user.nameColor
         if not html:
             msg = html2.escape(msg, quote = False)
-            msg = _fontFormat(msg)
+
         msg = msg.replace('\n', '\r').replace('~', '&#126;')
         for x in 'b i u'.split():
             msg = msg.replace('<%s>' % x, '<%s>' % x.upper()).replace(
@@ -1476,12 +1496,17 @@ class CHConnection(WSConnection):
                     round(int(fc[i:i + 2], 16) / 17) for i in
                     (0, 2, 4))).lower() if len(fc) == 6 else fc[:3].lower()
             msg = msg.replace('&nbsp;', ' ')  # fix
+            msg = _videoImagePMFormat(msg)
+            if not html:
+                msg = _fontFormat(msg)
             msg = convertPM(msg)  # TODO No ha sido completamente probado
         else:  # Room
             msg = msg.replace('\t', '&nbsp;' * 3 + ' ').replace('   ',
                                                                 ' ' +
                                                                 '&nbsp;' + ' ')  # TODO 3 en adelante
             formt = '<n{}/><f x{:0>2.2}{}="{}">{}'
+            if not html:
+                msg = _fontFormat(msg)
             if self.user.isanon:
                 # El color del nombre es el tiempo de conexión y no hay fuente
                 nc = str(self._connectiontime).split('.')[0][-4:]
@@ -1608,17 +1633,21 @@ class PM(CHConnection):
 
     def removeContact(self, user):  # TODO
         """remove contact"""
+        if isinstance(user, User):
+            user = user.name
         if user in self._contacts:
             self._sendCommand("wldelete", user.name)
             self._contacts.remove(user)
-            self._callEvent("onPMContactRemove", user)
+            self._callEvent("onPMContactRemove", User(user))
 
     def block(self, user):  # TODO
         """block a person"""
+        if isinstance(user, User):
+            user = user.name
         if user not in self._blocklist:
-            self._sendCommand("block", user.name, user.name, "S")
-            self._blocklist.add(user)
-            self._callEvent("onPMBlock", user)
+            self._sendCommand("block", user, user, "S")
+            self._blocklist.add(User(user))
+            self._callEvent("onPMBlock", User(user))
 
     def unblock(self, user):  # TODO
         """unblock a person"""
@@ -1635,7 +1664,8 @@ class PM(CHConnection):
         if isinstance(user, User):
             user = user.name
         if user == self.user.name:  # El usuario propio daría error
-            return ['', '0', self.connected and 'online' or 'offline']
+            return [self.user.name, '0',
+                    self.connected and 'online' or 'offline']
         self._sendCommand('track', user)
         try:
             res = [None] * 3
@@ -1708,8 +1738,6 @@ class PM(CHConnection):
 
     def _rcmd_OK(self, args):
         self._connected = True
-        if args:
-            print(args)
         self._sendCommand("wl")  # TODO
         self._sendCommand("getblock")  # TODO
         self._sendCommand("getpremium")
@@ -2566,6 +2594,9 @@ class Room(CHConnection):
         self._currenname = self._currentaccount[0]
         self._sendCommand(*__reg2)
 
+    def _reload(self):
+        self._sendCommand("reload_init_batch")
+
     @staticmethod
     def _parseFlags(flags: str, molde: dict) -> Struct:  # TODO documentar
         flags = int(flags)
@@ -2618,7 +2649,8 @@ class Room(CHConnection):
         Se ha iniciado sesión con el alias indicado
         """
         # TODO Cambiar el self.user por el alias usado en login
-        pass
+        self._user = User("#" + self._currentname)
+        self._reload()
 
     def _rcmd_annc(self, args):
         self._announcement[0] = int(args[0])
@@ -2927,9 +2959,9 @@ class Room(CHConnection):
 
     def _rcmd_logoutok(self, args):
         """Me he desconectado, ahora usaré mi nombre de anon"""
-        self._currentname = '!' + getAnonName(self._puid,
-                                              str(self._connectiontime))
-        self._user = User(self._currentname,
+        name = '!' + getAnonName(self._puid,
+                                 str(self._connectiontime))
+        self._user = User(name,
                           nameColor = str(self._connectiontime).split('.')[0][
                                       -4:])
 
@@ -3074,6 +3106,7 @@ class Room(CHConnection):
     def _rcmd_pwdok(self, args = None):
         """Login correcto"""
         self._user = User(self._currentname)
+        self._reload()
 
     def _rcmd_show_tb(self, args):  # TODO documentar
         self._callEvent("onFloodBan", int(args[0]))
@@ -3426,9 +3459,9 @@ class Gestor:
         """Detiene al bot"""
         self._running = False
         # TODO comprobar si todo esto es necesario
-        for x in self._tasks:
+        for x in list(self._tasks):
             x.cancel()
-        for x in self.rooms:
+        for x in list(self.rooms):
             x.disconnect()
         if self.pm:
             self.pm.disconnect()
