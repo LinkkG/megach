@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.4
+Version: 1.5.5
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.4'
+version = 'M1.5.5'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -840,19 +840,19 @@ class User:
 
     @property
     def country(self):
-        return self.info and self.info.country
+        return self.info.country or None
 
     @property
     def fullprofile(self):
-        return self.info and urlreq.unquote(self.info.fullprofile)
+        return urlreq.unquote(self.info.fullprofile) or None
 
     @property
     def gender(self):
-        return self.info and self.info.gender.lower() or None
+        return self.info.gender.lower() or None
 
     @property
     def premiumtime(self):
-        return self.info and self.info.bgtime or None
+        return self.info.bgtime or None
 
     sessionids = property(getSessionIds)
 
@@ -890,6 +890,8 @@ class User:
         self._name = value.lower()
         self._showname = value
 
+    def get(name):
+        return User._users.get(name, User(name))
 
 class Message:
     """
@@ -3481,14 +3483,15 @@ class Gestor:
             room.setRecordingMode(int(activo))
 
     def setFontColor(self, hexfont):
-        self.user._fontColor = str(hexfont)
+        for x in list(self.rooms):
+            x.user._fontColor = str(hexfont)
 
     def setFontFace(self, facenum):
         """
         @param facenum: El número de la fuente en un string
         """
-
-        self.user._fontFace = str(Fonts.get(str(facenum).lower(), facenum))
+        for x in list(self.rooms):
+            x.user._fontFace = str(Fonts.get(str(facenum).lower(), facenum))
 
     def setFontSize(self, sizenum):
         """Cambiar el tamaño de la fuente
