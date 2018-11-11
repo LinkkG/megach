@@ -3030,6 +3030,9 @@ class Room(CHConnection):
                     '!' + getAnonName(self._connectiontime, self._puid))
         elif self._authtype == 'N':
             pass
+        self._user._fontColor=self.mgr._fontColor
+        self._user._fontFace=self.mgr._fontFace
+        self._user._fontSize=self.mgr._fontSize
         if mods:
             for x in mods.split(';'):
                 powers = x.split(',')[1]
@@ -3220,8 +3223,12 @@ class Gestor:
         self._tasks = set()
         self._pm = None
         self._badconns = queue.Queue()
+        self._fontColor='000000'
+        self._fontSize='12'
+        self._fontFace='0'
         self.bgmode = False
         self._pm = pm
+
         if pm:
             self._pm = PM(mgr = self, name = self.name,
                           password = self.password)
@@ -3483,6 +3490,7 @@ class Gestor:
             room.setRecordingMode(int(activo))
 
     def setFontColor(self, hexfont):
+        self._fontColor=str(hexfont)
         for x in list(self.rooms):
             x.user._fontColor = str(hexfont)
 
@@ -3490,14 +3498,19 @@ class Gestor:
         """
         @param facenum: El número de la fuente en un string
         """
+        fuente=str(Fonts.get(str(facenum).lower(), facenum))
+        self._fontFace=fuente
         for x in list(self.rooms):
-            x.user._fontFace = str(Fonts.get(str(facenum).lower(), facenum))
+            x.user._fontFace = fuente
 
     def setFontSize(self, sizenum):
         """Cambiar el tamaño de la fuente
         TODO para la sala
         """
-        self.user._fontSize = sizenum
+        size=str(sizenum)
+        self._fontSize = size
+        for x in list(self.rooms):
+            x.user._fontSize = size
 
     def setInterval(self, tiempo, funcion, *args, **kwargs):
         """
