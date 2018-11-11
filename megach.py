@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.5
+Version: 1.5.6
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.5'
+version = 'M1.5.6'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -891,7 +891,7 @@ class User:
         self._showname = value
 
     def get(name):
-        return User._users.get(name, User(name))
+        return User._users.get(name) or User(name)
 
 class Message:
     """
