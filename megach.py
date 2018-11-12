@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.6
+Version: 1.5.7
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.6'
+version = 'M1.5.7'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1624,23 +1624,23 @@ class PM(CHConnection):
             return False
         self._sendCommand(*r2)
 
-    def addContact(self, user: str):  # TODO
-        """add contact"""
-        if isinstance(user, str):  # TODO externalizar
-            user = User(user)
+    def addContact(self, user: str):
+        """Add Contact to PM"""
+        if isinstance(user, str):
+            user = User.get(user)
         if user not in self._contacts:
             self._sendCommand("wladd", user.name)
             self._contacts.add(user)
             self._callEvent("onPMContactAdd", user)
 
-    def removeContact(self, user):  # TODO
-        """remove contact"""
-        if isinstance(user, User):
-            user = user.name
+    def removeContact(self, user: str):
+        """Remove Contact from PM"""
+        if isinstance(user, str):
+            user = User.get(user)
         if user in self._contacts:
             self._sendCommand("wldelete", user.name)
             self._contacts.remove(user)
-            self._callEvent("onPMContactRemove", User(user))
+            self._callEvent("onPMContactRemove", user)
 
     def block(self, user):  # TODO
         """block a person"""
@@ -1892,7 +1892,7 @@ class Room(CHConnection):
     tiene todas sus propiedades
     """
     _BANDATA = namedtuple('BanData', ['unid', 'ip', 'target', 'time', 'src'])
-
+    _INFO = namedtuple('Info', ['title', 'about'])
     def __dir__(self):
         return [x for x in
                 set(list(self.__dict__.keys()) + list(dir(type(self)))) if
@@ -1925,16 +1925,14 @@ class Room(CHConnection):
         self._silent = False
         self._time = None
         self._timecorrection = 0
-        self._info = ['', '']  # TODO Title, about
+        self._info = None  # TODO Title, about
         self._owner = None
         self._unbanlist = dict()
         self._unbanqueue = deque(maxlen = 500)
         self._user = None
         self._users = deque()
-        # TODO reemplazar userlist con userdict y userhistory
         self._userdict = dict()  # TODO {ssid:{user},}
         self._userhistory = deque(maxlen = 10)  # TODO {{time: <user>},}
-        # self.user_id = None TODO
         self._usercount = 0
         # self.imsgs_drawn = 0 # TODO
         # self.imsgs_rendered = False # TODO
@@ -2015,20 +2013,30 @@ class Room(CHConnection):
         return list(self._history)
 
     @property
+    def about(self):
+        return _clean_message(urlreq.unquote(self.info.about))[
+                   0] or None
+
+    @property
+    def title(self):
+        return urlreq.unquote(self.info.title)
+        
+    @property
     def info(self):
         """Información de la sala, una lista [titulo,información]"""
         if self._info:
             return self._info
-        url = 'http://fp.chatango.com/profileimg' + link + 'mod1.xml'
+        link = '/%s/%s/' % ('/'.join((self.name * 2)[:2]), self.name)
+        url = 'http://ust.chatango.com/groupinfo' + link + 'gprofile.xml'
         try:
             mixml = ET.fromstring(urlreq.urlopen(url).read().decode('utf-8'))
         except:
-            return User._INFO(None, None, None, None, None)
-        buscar = 'body s b l d'
+            return Room._INFO('', '')
+        buscar = 'title desc'
         encontrado = []
         for x in buscar.split():
             encontrado.append(mixml.findtext(x, ''))
-        self._info = User._INFO(*encontrado)
+        self._info = Room._INFO(*encontrado)
         return self._info
 
     @property
@@ -2218,7 +2226,7 @@ class Room(CHConnection):
                 return True
         return False
 
-    def deleteMessage(self, message):  # TODO comprobar permiso
+    def deleteMessage(self, message):
         if self.getLevel(self.user) > 0 and message.msgid:
             self._sendCommand("delmsg", message.msgid)
             return True
@@ -2228,7 +2236,7 @@ class Room(CHConnection):
         if self.getLevel(self.user) > 0:
             msg = self.getLastMessage(user)
             if msg:
-                self.deleteMessage(user)
+                self.deleteMessage(msg)
         return False
 
     def findUser(self, name):
@@ -2819,9 +2827,9 @@ class Room(CHConnection):
     def _rcmd_denied(self, args):  # TODO
         pass
 
-    def _rcmd_getannc(self, args):  # TODO falta rcmd
-        # <class 'list'>: ['3', 'pythonrpg', '5', '60', '<nE20/><f
-        # x1100F="1">hola']
+    def _rcmd_getannc(self, args):
+        # ['3', 'pythonrpg', '5', '60', '<nE20/><f x1100F="1">hola']
+        # Enabled, Room, ?, Time, Message
         # TODO que significa el tercer elemento?
         if len(args) < 4 or args[0] == 'none':
             return
@@ -3187,7 +3195,8 @@ class Room(CHConnection):
         self._callEvent('onUpdateProfile', User(args[0]))
 
     def _rcmd_updgroupinfo(self, args):  # TODO documentar
-        self._info = [urlreq.unquote(args[0]), urlreq.unquote(args[1])]
+        self._info = Room._INFO(urlreq.unquote(args[0]),
+                                urlreq.unquote(args[1]))
         self._callEvent('onUpdateInfo')
 
 
