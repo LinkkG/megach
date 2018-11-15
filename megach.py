@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.9
+Version: 1.5.10
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.9'
+version = 'M1.5.10'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -810,18 +810,20 @@ class User:
         if self._info:
             return self._info
         link = '/%s/%s/' % ('/'.join((self.name * 2)[:2]), self.name)
-        url = 'http://fp.chatango.com/profileimg' + link + 'mod1.xml'
-        url2 = 'http://fp.chatango.com/profileimg' + link + 'mod2.xml'
-        try:
-            mixml = ET.fromstring(urlreq.urlopen(url).read().decode('utf-8'))
-            mixml2 = ET.fromstring(urlreq.urlopen(url2).read().decode('utf-8'))
-        except:
-            return User._INFO(*[''] * 6)
+        urls = ('http://fp.chatango.com/profileimg' + link + 'mod1.xml',
+                'http://fp.chatango.com/profileimg' + link + 'mod2.xml')
+        misxml = []
+        for x in urls:
+            try:
+                misxml.append(
+                    ET.fromstring(urlreq.urlopen(x).read().decode('latin-1')))
+            except:
+                misxml.append(None)
         buscar = 'body s b l d'
         encontrado = []
         for x in buscar.split():
-            encontrado.append(mixml.findtext(x, ''))
-        encontrado.append(mixml2.findtext('body', ''))
+            encontrado.append(misxml[0] and misxml[0].findtext(x, '') or '')
+        encontrado.append(misxml[1] and misxml[1].findtext('body', '') or '')
         self._info = User._INFO(*encontrado)
         return self._info
 
@@ -3204,7 +3206,10 @@ class Room(CHConnection):
 
     def _rcmd_updateprofile(self, args):
         """Cuando alguien actualiza su perfil en un chat"""
-        self._callEvent('onUpdateProfile', User(args[0]))
+        user = User.get(args[0])
+        user._info = None
+        self._callEvent('onUpdateProfile', user)
+
 
     def _rcmd_updgroupinfo(self, args):  # TODO documentar
         self._info = Room._INFO(urlreq.unquote(args[0]),
