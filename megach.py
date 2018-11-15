@@ -822,8 +822,8 @@ class User:
         buscar = 'body s b l d'
         encontrado = []
         for x in buscar.split():
-            encontrado.append(misxml[0] and misxml[0].findtext(x, '') or '')
-        encontrado.append(misxml[1] and misxml[1].findtext('body', '') or '')
+            encontrado.append(misxml[0] and misxml[0].findtext(x) or '')
+        encontrado.append(misxml[1] and misxml[1].findtext('body') or '')
         self._info = User._INFO(*encontrado)
         return self._info
 
@@ -1108,11 +1108,15 @@ class WSConnection:
         self._disconnect()
 
     def _callEvent(self, evt, *args, **kw):
-        if self.mgr and hasattr(self.mgr, evt):
-            getattr(self.mgr, evt)(self, *args, **kw)
-            self.mgr.onEventCalled(self, evt, *args, **kw)
-        elif self.mgr:
-            print('Evento no controlado ' + str(evt))
+        try:
+            if self.mgr and hasattr(self.mgr, evt):
+                getattr(self.mgr, evt)(self, *args, **kw)
+                self.mgr.onEventCalled(self, evt, *args, **kw)
+            elif self.mgr:
+                print('Evento no controlado ' + str(evt))
+        except Exception as e:
+            print("Error capturado en evento '%s':'%s'"%(evt,e),
+                file=sys.stderr)
 
     def _disconnect(self):
         """
