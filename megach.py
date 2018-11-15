@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.7
+Version: 1.5.8
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.7'
+version = 'M1.5.8'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -317,7 +317,7 @@ def _videoImagePMFormat(text):
         text = text.replace(original, cambio)
     for x in re.findall("http://[^\s]+?.jpg|https://[^\s]+?.jpg", text):
         text = text.replace(x, '<i s="%s" w="70.45" h="125"/>' % x)
-    print(text)
+    # print(text)
     return text
 
 ################################################################
@@ -2020,7 +2020,11 @@ class Room(CHConnection):
     @property
     def title(self):
         return urlreq.unquote(self.info.title)
-        
+
+    @property
+    def announcement(self):
+        return self._announcement
+    
     @property
     def info(self):
         """Información de la sala, una lista [titulo,información]"""
@@ -2822,7 +2826,8 @@ class Room(CHConnection):
                 user = msg.user
                 msg.detach()
                 msgs.append(msg)
-        self._callEvent('onDeleteUser', user, msgs)
+        if msgs:
+            self._callEvent('onDeleteUser', user, msgs)
 
     def _rcmd_denied(self, args):  # TODO
         pass
@@ -3161,15 +3166,16 @@ class Room(CHConnection):
         time = args[-1]
         self._unbanqueue.append(
                 self._BANDATA(unid, ip, target, float(time), ubsrc))
+
         if target == '':
             # Si el baneado era anon, intentar otbener su nombre
             msx = [msg for msg in self._history if msg.unid == unid]
             target = msx and msx[0].user or User('anon')
             self._callEvent('onAnonUnban', ubsrc, target)
         else:
+            target = User(target)
             if target in self._banlist:
                 self._banlist.pop(target)
-            target = User(target)
             self._callEvent("onUnban", ubsrc, target)
 
     def _rcmd_unblocklist(self, args):
@@ -3339,8 +3345,7 @@ class Gestor:
         @rtype: Room
         @return: the room
         """
-        if room in self._rooms:
-            return self._rooms[room]
+        return self._rooms.get(room.lower())
 
     def joinRoom(self, room: str, account = None):
         """
@@ -3355,7 +3360,7 @@ class Gestor:
                     account.lower(), self._accounts[0])
             cuenta[0] = account
             account = cuenta
-        if room not in self._rooms:
+        if room.lower() not in self._rooms:
             # self._rooms[room] = Room(room, self, account)
             # self._rooms[room.lower()]=Room(room.lower(),self,account)
             # self._rooms[room.lower()]=
@@ -3559,6 +3564,15 @@ class Gestor:
         Al ser baneado un anon en la sala
         @param room: Sala donde ocurre
         @param user: Usuario que banea
+        @param target: Usuario baneado
+        """
+        pass
+
+    def onAnonUnban(self, room, user, target):
+        """
+        Al ser retirado el ban de un anon en la sala
+        @param room: Sala donde ocurre
+        @param user: Usuario que retira el ban
         @param target: Usuario baneado
         """
         pass
