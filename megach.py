@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.8
+Version: 1.5.9
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.8'
+version = 'M1.5.9'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -350,6 +350,7 @@ class Task:
                 return
             Task.ALIVE = True
         while Task.ALIVE:
+            time.sleep(0.01)
             Task._tick()
 
     @staticmethod
@@ -1979,6 +1980,10 @@ class Room(CHConnection):
         return list(self._banlist.keys())
 
     @property
+    def bannames(self):
+        return [x.name for x in self.banlist]
+
+    @property
     def botname(self):  # TODO anon o temp !#
         """Nombre del bot en la sala, TODO esto o currentname"""
         return self.name
@@ -3043,9 +3048,10 @@ class Room(CHConnection):
                     '!' + getAnonName(self._connectiontime, self._puid))
         elif self._authtype == 'N':
             pass
-        self._user._fontColor=self.mgr._fontColor
-        self._user._fontFace=self.mgr._fontFace
-        self._user._fontSize=self.mgr._fontSize
+        if self.mgr:
+            self._user._fontColor = self.mgr._fontColor
+            self._user._fontFace = self.mgr._fontFace
+            self._user._fontSize = self.mgr._fontSize
         if mods:
             for x in mods.split(';'):
                 powers = x.split(',')[1]
@@ -3393,6 +3399,7 @@ class Gestor:
         self._jt.daemon = True
         self._jt.start()
         while self._running:
+            time.sleep(0.01)
             pass
             # room, account = self._colasalas.get()
             # con = Room(room, self, account)
