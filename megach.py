@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.10
+Version: 1.5.11
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.10'
+version = 'M1.5.11'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -298,8 +298,11 @@ def _fontFormat(text):
     formats = {'/': 'I', '\*': 'B', '_': 'U'}
     for f in formats:
         f1, f2 = set(formats.keys()) - {f}
-        find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[^\s]){2}'.format(f1, f2, f)
-        for x in re.findall(find, ' ' + text):
+        # find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[^\s]){2}'.format(f1, f2, f+'{1}')
+        find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[^\s]?[{2}]?){2}[{0}{1}]?[' \
+               '\s]'.format(
+                f1, f2, f)
+        for x in re.findall(find, ' ' + text + ' '):
             original = f[-1] + x + f[-1]
             cambio = '<' + formats[f] + '>' + x + '</' + formats[f] + '>'
             text = text.replace(original, cambio)
@@ -319,6 +322,7 @@ def _videoImagePMFormat(text):
         text = text.replace(x, '<i s="%s" w="70.45" h="125"/>' % x)
     # print(text)
     return text
+
 
 ################################################################
 # Utils
@@ -816,7 +820,8 @@ class User:
         for x in urls:
             try:
                 misxml.append(
-                    ET.fromstring(urlreq.urlopen(x).read().decode('latin-1')))
+                        ET.fromstring(
+                                urlreq.urlopen(x).read().decode('latin-1')))
             except:
                 misxml.append(None)
         buscar = 'body s b l d'
@@ -895,6 +900,7 @@ class User:
 
     def get(name):
         return User._users.get(name) or User(name)
+
 
 class Message:
     """
@@ -1115,8 +1121,8 @@ class WSConnection:
             elif self.mgr:
                 print('Evento no controlado ' + str(evt))
         except Exception as e:
-            print("Error capturado en evento '%s':'%s'"%(evt,e),
-                file=sys.stderr)
+            print("Error capturado en evento '%s':'%s'" % (evt, e),
+                  file = sys.stderr)
 
     def _disconnect(self):
         """
@@ -1900,6 +1906,7 @@ class Room(CHConnection):
     """
     _BANDATA = namedtuple('BanData', ['unid', 'ip', 'target', 'time', 'src'])
     _INFO = namedtuple('Info', ['title', 'about'])
+
     def __dir__(self):
         return [x for x in
                 set(list(self.__dict__.keys()) + list(dir(type(self)))) if
@@ -2035,7 +2042,7 @@ class Room(CHConnection):
     @property
     def announcement(self):
         return self._announcement
-    
+
     @property
     def info(self):
         """Información de la sala, una lista [titulo,información]"""
@@ -2840,8 +2847,10 @@ class Room(CHConnection):
         if msgs:
             self._callEvent('onDeleteUser', user, msgs)
 
-    def _rcmd_denied(self, args):  # TODO
-        pass
+    def _rcmd_denied(self, args):  # TODO petición de conexion denegada
+        """La sala posiblemente no existe"""
+        # TODO asegurar que este rcmd no se envíe por otros motivos
+        self.disconnect()
 
     def _rcmd_getannc(self, args):
         # ['3', 'pythonrpg', '5', '60', '<nE20/><f x1100F="1">hola']
@@ -2991,30 +3000,32 @@ class Room(CHConnection):
                           nameColor = str(self._connectiontime).split('.')[0][
                                       -4:])
 
-    def _rcmd_mods(self, args):  # TODO
-        mods = dict()
+    def _rcmd_mods(self, args):
+        pre = self._mods
+        mods = self._mods = dict()
+        # Load current mods
         for mod in args:
             name, powers = mod.split(',', 1)
-            mods[User(name)] = self._parseFlags(powers, ModFlags)
-            mods[User(name)].isadmin = int(powers) & AdminFlags != 0
-        premods = self.mods
-        if self._user not in premods:  # Si el bot no estaba en los mods antes
-            self._callEvent('onModsChange',
-                            set(mods.keys()) - premods)  # TODO, problemas acá?
-        else:
-            for user in set(mods.keys()) - premods:  # Con Mod
-                self._callEvent("onModAdd", user)
-            for user in premods - set(mods.keys()):  # Sin Mod
-                self._callEvent("onModRemove", user)
-            for user in premods & set(mods.keys()):  # Cambio de privilegios
-                # TODO acelear y evitar errores
-                privs = [x for x in dir(mods.get(user)) if
-                         x[0] != '_' and getattr(self._mods.get(user),
-                                                 x) != getattr(mods.get(user),
-                                                               x)]
-                if privs and privs != ['MOD_ICON_VISIBLE', 'value']:
-                    self._callEvent('onModChange', user, privs)
-        self._mods = mods
+            utmp = User.get(name)
+            mods[utmp] = self._parseFlags(powers, ModFlags)
+            mods[utmp].isadmin = int(powers) & AdminFlags != 0
+
+        if self._user not in pre:  # Si el bot no estaba en los mods
+            self._callEvent('onModAdd', self.user)
+            return
+
+        for user in self.mods - set(pre.keys()):  # Con Mod
+            self._callEvent("onModAdd", user)
+        for user in set(pre.keys()) - self.mods:  # Sin Mod
+            self._callEvent("onModRemove", user)
+        for user in set(pre.keys()) & self.mods:  # Cambio de privilegios
+            privs = set(x for x in dir(mods.get(user)) if
+                        not x.startswith('_') and getattr(mods.get(user),
+                                                          x) != getattr(
+                                pre.get(user), x))
+            privs = privs - {'MOD_ICON_VISIBLE', 'value'}  # Let's Ignore these
+            if privs:  # ¿Are there changes?
+                self._callEvent('onModChange', user, privs)
 
     def _rcmd_miu(self, args):  # TODO documentar
         self._callEvent('onPictureChange', User(args[0]))
@@ -3090,7 +3101,7 @@ class Room(CHConnection):
             before = self._userdict[ssid][1]
         if cambio == '0':  # Leave
             user.removeSessionId(self, ssid)  # Quitar la id de sesión activa
-            self._callEvent('onLeave', user, puid)
+
             if ssid in self._userdict:  # Remover el usuario de la sala
                 usr = self._userdict.pop(ssid)[1]
                 lista = [x[1] for x in self._userhistory]
@@ -3102,6 +3113,8 @@ class Room(CHConnection):
                     self._userhistory.append([contime, usr])
             if user.isanon:
                 self._callEvent('onAnonLeave', user, puid)
+            else:
+                self._callEvent('onLeave', user, puid)
         elif cambio == '1' or not before:  # Join
             user.addSessionId(self, ssid)  # Agregar la sesión al usuario
             if not user.isanon and user not in self.userlist:
@@ -3214,7 +3227,6 @@ class Room(CHConnection):
         user._info = None
         self._callEvent('onUpdateProfile', user)
 
-
     def _rcmd_updgroupinfo(self, args):  # TODO documentar
         self._info = Room._INFO(urlreq.unquote(args[0]),
                                 urlreq.unquote(args[1]))
@@ -3253,9 +3265,9 @@ class Gestor:
         self._tasks = set()
         self._pm = None
         self._badconns = queue.Queue()
-        self._fontColor='000000'
-        self._fontSize='12'
-        self._fontFace='0'
+        self._fontColor = '000000'
+        self._fontSize = '12'
+        self._fontFace = '0'
         self.bgmode = False
         self._pm = pm
 
@@ -3520,7 +3532,7 @@ class Gestor:
             room.setRecordingMode(int(activo))
 
     def setFontColor(self, hexfont):
-        self._fontColor=str(hexfont)
+        self._fontColor = str(hexfont)
         for x in list(self.rooms):
             x.user._fontColor = str(hexfont)
 
@@ -3528,8 +3540,8 @@ class Gestor:
         """
         @param facenum: El número de la fuente en un string
         """
-        fuente=str(Fonts.get(str(facenum).lower(), facenum))
-        self._fontFace=fuente
+        fuente = str(Fonts.get(str(facenum).lower(), facenum))
+        self._fontFace = fuente
         for x in list(self.rooms):
             x.user._fontFace = fuente
 
@@ -3537,7 +3549,7 @@ class Gestor:
         """Cambiar el tamaño de la fuente
         TODO para la sala
         """
-        size=str(sizenum)
+        size = str(sizenum)
         self._fontSize = size
         for x in list(self.rooms):
             x.user._fontSize = size
