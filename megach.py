@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.12
+Version: 1.5.13
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.12'
+version = 'M1.5.13'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1078,6 +1078,7 @@ class Message:
 
 class WSConnection:
     _WSLOCK = threading.Lock()  # Para manejar las conexiones una a la vez
+    _SAFELOCK = threading.Lock()
     _INSTANCES = set()
 
     def __init__(self, server, port, origin, name = 'WSConnection'):
@@ -1184,26 +1185,28 @@ class WSConnection:
     def _feed(self):
         while self._connected:
             time.sleep(0.01)
-            with self._tlock:
-                if not self._sock:
-                    continue
-                rd, wr, sp = select.select([self._sock],
-                                           (self._wbuf and [self._sock] or []),
-                                           [],
-                                           0.2)
-                for x in wr:
-                    try:
-                        # if self._name == 'PM':
-                        #    print("%s Enviando %s"%(str(self).upper(),
-                        # str(self._wbuf)))
-                        # with self._tlock:
-                        size = self._sock.send(self._wbuf)
-                        self._wbuf = self._wbuf[size:]
-                    except Exception as e:
-                        if debug:
-                            print("Error sock.send " + str(e), sys.stderr)
-                for x in rd:
-                    try:
+            try:
+                with self._tlock:
+                    if not self._sock:
+                        continue
+                    rd, wr, sp = select.select([self._sock],
+                                               (self._wbuf and [
+                                                   self._sock] or []),
+                                               [],
+                                               0.2)
+                    for x in wr:
+                        try:
+                            # if self._name == 'PM':
+                            #    print("%s Enviando %s"%(str(self).upper(),
+                            # str(self._wbuf)))
+                            # with self._tlock:
+                            size = self._sock.send(self._wbuf)
+                            self._wbuf = self._wbuf[size:]
+                        except Exception as e:
+                            if debug:
+                                print("Error sock.send " + str(e), sys.stderr)
+                    for x in rd:
+
                         chunk = None
                         # with self._tlock:
                         if self._sock:
@@ -1213,44 +1216,45 @@ class WSConnection:
                             #    if self._name == 'PM':
                             #        print("%s GOT %s"%(str(self).upper(),
                             # str(chunk)))
-                            with WSConnection._WSLOCK:
+                            with WSConnection._SAFELOCK:
                                 self.onData(chunk)
                         elif chunk is not None:
                             # Conexión perdida
-                            with WSConnection._WSLOCK:
+                            with WSConnection._SAFELOCK:
                                 if not self._serverheaders:  # Nunca se recibió
                                     # comandos de la conexión
                                     self.disconnect()
                                 else:
                                     self.reconnect()  # TODO
                                     # ConnectionRefusedError
-                    except socket.error as cre:  # socket.error -
-                        # ConnectionResetError
-                        # TODO esto no funciona si hay muchas salas
-                        with WSConnection._WSLOCK:
-                            self.test = cre  # variable de depuración para
-                            # android
-                            print('[%s]Conexión perdida, reintentando en 10 '
-                                  'segundos...%s' % (self, cre))
-                            counter = self._connectattempts or 1  # Intentos de
-                            # conexion a
-                            #  la sala
-                            while counter:
-                                try:
-                                    self.reconnect()
-                                    counter = 0
-                                    # TODO asegurar el reinicio del contador
-                                except Exception as sgai:  # socket.gaierror:  #
-                                    # En caso de que no haya internet
-                                    print(
-                                            '[{}][{:^5}] Aún no hay internet.[{'
-                                            '}]'.format(
-                                                    time.strftime(
-                                                            '%I:%M:%S %p'),
-                                                    counter, sgai),
-                                            file = sys.stderr)
-                                    counter += 1
-                                    time.sleep(10)
+            except socket.error as cre:  # socket.error -
+                # ConnectionResetError
+                # TODO esto no funciona si hay muchas salas
+                with WSConnection._WSLOCK:
+                    self.test = cre  # variable de depuración para
+                    # android
+                    print('[%s]Conexión perdida, reintentando en 10 '
+                          'segundos...%s' % (self, cre))
+                    self._connectattempts = 1  # Intentos de
+                    # conexion a
+                    #  la sala
+                    while self._connectattempts:
+                        try:
+                            self.reconnect()
+                            self._connectattempts = 0
+                            # TODO asegurar el reinicio del contador
+                        except Exception as sgai:  # socket.gaierror:  #
+                            # En caso de que no haya internet
+                            print(
+                                    '[{}][{}][{:^5}] Aún no hay internet.[{'
+                                    '}]'.format(
+                                            time.strftime(
+                                                    '%I:%M:%S %p'),
+                                            self,
+                                            self._connectattempts, sgai),
+                                    file = sys.stderr)
+                            # self._connectattempts += 1
+                            time.sleep(10)
 
     def _sendCommand(self, *args):
         """
@@ -1428,6 +1432,9 @@ class CHConnection(WSConnection):
         self._currentname = account and account[
             0]  # El usuario de esta conexión
         self._correctiontime = 0  # Diferencia entre la hora local y el server
+        # Por que no guardar una configuración de esto por sala?
+        self._maxHistoryLength = Gestor.maxHistoryLength
+        self._history = deque(maxlen = self._maxHistoryLength)
         self._password = account[1]  # La clave de esta conexión
         self._user = User(account[0])
         self._logged = False
@@ -1546,6 +1553,10 @@ class CHConnection(WSConnection):
         return [
             formt.format(nc, str(self.user.fontSize), fc, self.user.fontFace,
                          unimsg) for unimsg in msg]
+
+    @property
+    def history(self):
+        return list(self._history)
 
     def setBgMode(self, modo):
         """Activar el BG"""  # TODO modo por defecto
@@ -1816,6 +1827,7 @@ class PM(CHConnection):
                 unknown2 = unknown2,
                 user = user
                 )
+        self._history.append(msg)
         self._callEvent("onPMMessage", user, msg)
 
     def _rcmd_msgoff(self, args):  # TODO
@@ -1839,6 +1851,7 @@ class PM(CHConnection):
                 raw = rawmsg,
                 room = self,
                 time = mtime, unid = None, unknown2 = unknown2, user = user)
+        self._history.append(msg)
         self._callEvent("onPMOfflineMessage", user, msg)
 
     def _rcmd_reload_profile(self, args):  # TODO completar
@@ -1938,13 +1951,12 @@ class Room(CHConnection):
         self._badge = 0
         self._channel = 0
         self._currentaccount = account or ('', '')
-        # Por que no guardar una configuración de esto por sala?
-        self._maxHistoryLength = Gestor.maxHistoryLength
+
         # Datos del chat
         self._announcement = [0, 0, '']  # Estado, Tiempo, Texto
         self._banlist = dict()  # Lista de usuarios baneados
         self._flags = None
-        self._history = deque(maxlen = self._maxHistoryLength)
+
         self._mqueue = dict()
         self._mods = dict()
         self._msgs = dict()  # TODO esto y history es lo mismo?
@@ -2038,10 +2050,6 @@ class Room(CHConnection):
     @flags.setter  # TODO ajustarlo para cambiar la sala
     def flags(self, value):
         self._flags = value
-
-    @property
-    def history(self):
-        return list(self._history)
 
     @property
     def about(self):
@@ -2992,6 +3000,7 @@ class Room(CHConnection):
         if self.attempts == 1:
             self._callEvent("onConnect")
         else:
+            self._connectattempts -= 1
             self._callEvent("onReconnect")
             self._connectattempts = 1
         # comprobar el tamaño máximo del  #  #
