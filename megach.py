@@ -1077,7 +1077,7 @@ class Message:
 
 
 class WSConnection:
-    _WSLOCK = threading.Lock()
+    _WSLOCK = threading.Lock()  # Para manejar las conexiones una a la vez
     _INSTANCES = set()
 
     def __init__(self, server, port, origin, name = 'WSConnection'):
@@ -1102,7 +1102,8 @@ class WSConnection:
         self._wbuf = b''  # El buffer de escritura a la conexión
         self._wlock = False  # Si no se debe envíar nada al wbuf
         self._wlockbuf = b''  # Cuando no se manda al wbuf, viene acá
-        self._tlock = threading.Lock()
+        self._tlock = threading.Lock()  # Para controlar esta conexion
+        # TODO usar en comandos que retornan datos
         self._connlock = threading.Lock()
         self._terminator = ['\x00', '\r\n\x00']
         self._pingdata = ''
@@ -1129,36 +1130,37 @@ class WSConnection:
         Privado: Solo usar para reconneción
         Cierra la conexión y detiene los pings, el objeto sigue existiendo
         """
-
-        if self._sock is not None:
-            self._sock.close()
-        # TODO do i need to clear session ids?
-        self._sock = None
-        self._serverheaders = b''
-        if self._pingTask:
-            self._pingTask.cancel()
-        self._connected = False
+        with self._tlock:
+            if self._sock:
+                self._sock.close()
+            # TODO do i need to clear session ids?
+            self._sock = None
+            self._serverheaders = b''
+            if self._pingTask:
+                self._pingTask.cancel()
+            self._connected = False
 
     def connect(self) -> bool:
         """ Iniciar la conexión con el servidor y llamar a _handshake() """
-        if not self._connected:
+        with self._tlock:
+            if not self._connected:
 
-            self._connectattempts += 1
-            self._sock = socket.socket()
-            # TODO Comprobar, si no hay internet hay error acá
-            self._sock.connect((self._server, self._port))
-            self._sock.setblocking(False)
-            self._handShake()
-            self._pingTask = Task(90, self._ping, True)
-            self._connected = True
-            if not self._fedder:
-                self._fedder = threading.Thread(
-                        target = self._feed,
-                        name = self._name or 'WSConnection'
-                        )
-                self._fedder.start()
-            return True
-        return False
+                self._connectattempts += 1
+                self._sock = socket.socket()
+                # TODO Comprobar, si no hay internet hay error acá
+                self._sock.connect((self._server, self._port))
+                self._sock.setblocking(False)
+                self._handShake()
+                self._pingTask = Task(90, self._ping, True)
+                self._connected = True
+                if not self._fedder:
+                    self._fedder = threading.Thread(
+                            target = self._feed,
+                            name = self._name or 'WSConnection'
+                            )
+                    self._fedder.start()
+                return True
+            return False
 
     def _handShake(self):
         """
@@ -1180,66 +1182,74 @@ class WSConnection:
 
     def _feed(self):
         while self._connected:
-            rd, wr, sp = select.select([self._sock],
-                                       (self._wbuf and [self._sock] or []), [],
-                                       0.2)
-            for x in wr:
-                try:
-                    # if self._name == 'PM':
-                    #    print("%s Enviando %s"%(str(self).upper(),
-                    # str(self._wbuf)))
-                    with self._tlock:
+            time.sleep(0.01)
+            with self._tlock:
+                if not self._sock:
+                    continue
+                rd, wr, sp = select.select([self._sock],
+                                           (self._wbuf and [self._sock] or []),
+                                           [],
+                                           0.2)
+                for x in wr:
+                    try:
+                        # if self._name == 'PM':
+                        #    print("%s Enviando %s"%(str(self).upper(),
+                        # str(self._wbuf)))
+                        # with self._tlock:
                         size = self._sock.send(self._wbuf)
                         self._wbuf = self._wbuf[size:]
-                except Exception as e:
-                    if debug:
-                        print("Error sock.send " + str(e), sys.stderr)
-            for x in rd:
-                try:
-                    chunk = None
-                    if self._sock:
-                        with self._tlock:
+                    except Exception as e:
+                        if debug:
+                            print("Error sock.send " + str(e), sys.stderr)
+                for x in rd:
+                    try:
+                        chunk = None
+                        # with self._tlock:
+                        if self._sock:
                             chunk = self._sock.recv(1024)
 
-                    if chunk:
-                        #    if self._name == 'PM':
-                        #        print("%s GOT %s"%(str(self).upper(),
-                        # str(chunk)))
+                        if chunk:
+                            #    if self._name == 'PM':
+                            #        print("%s GOT %s"%(str(self).upper(),
+                            # str(chunk)))
+                            with WSConnection._WSLOCK:
+                                self.onData(chunk)
+                        elif chunk is not None:
+                            # Conexión perdida
+                            with WSConnection._WSLOCK:
+                                if not self._serverheaders:  # Nunca se recibió
+                                    # comandos de la conexión
+                                    self.disconnect()
+                                else:
+                                    self.reconnect()  # TODO
+                                    # ConnectionRefusedError
+                    except socket.error as cre:  # socket.error -
+                        # ConnectionResetError
+                        # TODO esto no funciona si hay muchas salas
                         with WSConnection._WSLOCK:
-                            self.onData(chunk)
-                    elif chunk is not None:
-                        # Conexión perdida
-                        with WSConnection._WSLOCK:
-                            if not self._serverheaders:  # Nunca se recibió
-                                # comandos de la conexión
-                                self.disconnect()
-                            else:
-                                self.reconnect()  # TODO ConnectionRefusedError
-                except socket.error as cre:  # socket.error -
-                    # ConnectionResetError
-                    # TODO esto no funciona si hay muchas salas
-                    with WSConnection._WSLOCK:
-                        self.test = cre  # variable de depuración para android
-                        print('[%s]Conexión perdida, reintentando en 10 '
-                              'segundos...%s' % (self, cre))
-                        counter = self._connectattempts or 1  # Intentos de
-                        # conexion a
-                        #  la sala
-                        while counter:
-                            try:
-                                self.reconnect()
-                                counter = 0
-                                # TODO asegurar el reinicio del contador
-                            except Exception as sgai:  # socket.gaierror:  #
-                                # En caso de que no haya internet
-                                print(
-                                        '[{}][{:^5}] Aún no hay internet.[{'
-                                        '}]'.format(
-                                                time.strftime('%I:%M:%S %p'),
-                                                counter, sgai),
-                                        file = sys.stderr)
-                                counter += 1
-                                time.sleep(10)
+                            self.test = cre  # variable de depuración para
+                            # android
+                            print('[%s]Conexión perdida, reintentando en 10 '
+                                  'segundos...%s' % (self, cre))
+                            counter = self._connectattempts or 1  # Intentos de
+                            # conexion a
+                            #  la sala
+                            while counter:
+                                try:
+                                    self.reconnect()
+                                    counter = 0
+                                    # TODO asegurar el reinicio del contador
+                                except Exception as sgai:  # socket.gaierror:  #
+                                    # En caso de que no haya internet
+                                    print(
+                                            '[{}][{:^5}] Aún no hay internet.[{'
+                                            '}]'.format(
+                                                    time.strftime(
+                                                            '%I:%M:%S %p'),
+                                                    counter, sgai),
+                                            file = sys.stderr)
+                                    counter += 1
+                                    time.sleep(10)
 
     def _sendCommand(self, *args):
         """
@@ -1348,7 +1358,9 @@ class WSConnection:
                 payload = WS.getPayload(frame)
                 if info.opcode == WS.CLOSE:
                     # El servidor quiere cerrar la conexión
-                    pass  # TODO detectar este caso
+                    print(self._name + ' El servidor ha anulado la conexión',
+                          file = sys.stderr)
+                    self._disconnect()
                 elif info.opcode == WS.TEXT:
                     # El frame contiene datos
                     self._process(payload)
@@ -1361,10 +1373,10 @@ class WSConnection:
         """
         Vuelve a iniciar la conexión a la Sala/PM
         """
-        with self._tlock:
-            self._disconnect()
-            self._reset()
-            self.connect()
+        # with self._tlock:
+        self._disconnect()
+        self._reset()
+        self.connect()
 
     def _rcmd_(self, pong = None):
         """Al recibir un pong"""
@@ -1473,6 +1485,7 @@ class CHConnection(WSConnection):
         pass
 
     def _messageFormat(self, msg: str, html: bool):
+        # TODO ajustar envío de texto con tabulaciones
         if len(msg) + msg.count(' ') * 5 > self.MAXLEN:
             if self.BIGMESSAGECUT:
                 msg = msg[:self.MAXLEN]
@@ -1685,7 +1698,7 @@ class PM(CHConnection):
         try:
             res = [None] * 3
             # TODO si esto falla habrán resultados huérfanos
-            if threading.current_thread().name != 'MainThread':
+            if threading.current_thread().name not in ['MainThread', 'PM']:
                 # Esto debe ejecutarse en otro thread obligatoriamente
                 with self._pmLock:
                     res = self._trackqueue.get()
@@ -1723,7 +1736,7 @@ class PM(CHConnection):
         @param msg: Mensaje que se envia (string)
         """
         if msg and self.connected:
-            if isinstance(user, User):  # TODO externalizar
+            if isinstance(user, User):
                 user = user.name
             msg = self._messageFormat(str(msg), html)
             for unimsg in msg:
@@ -1772,8 +1785,10 @@ class PM(CHConnection):
     def _rcmd_idleupdate(self, args):  # TODO
         pass
 
-    def _rcmd_kickingoff(self, args):  # TODO
+    def _rcmd_kickingoff(self, args):
+        # TODO desencadenar un evento al ser echado del pm
         self.disconnect()
+        # self._callEvent("onKickedOff")
 
     def _rcmd_msg(self, args):  # msg TODO
         name = args[0] or args[1]  # Usuario o tempname
@@ -1851,8 +1866,10 @@ class PM(CHConnection):
     def _rcmd_toofast(self, args):  # TODO esto solo debería parar un momento
         self.disconnect()
 
-    def _rcmd_unblocked(self, user):  # TODO
-        """call when successfully unblocked"""
+    def _rcmd_unblocked(self, user):
+        """Se ha desbloqueado un usuario del pm"""
+        if isinstance(user, str):
+            user = User.get(user)
         if user in self._blocklist:
             self._blocklist.remove(user)
             self._callEvent("onPMUnblock", user)
@@ -1932,14 +1949,14 @@ class Room(CHConnection):
         self._msgs = dict()  # TODO esto y history es lo mismo?
         self._name = name
         self._nameColor = ''
-        self._port = 8080  # TODO
+        self._port = 443  # TODO cambio a 8080 si no está disponible
         self._rbuf = b''
         self._connectiontime = 0
         self._recording = 0
         self._silent = False
         self._time = None
         self._timecorrection = 0
-        self._info = None  # TODO Title, about
+        self._info = None
         self._owner = None
         self._unbanlist = dict()
         self._unbanqueue = deque(maxlen = 500)
@@ -1950,13 +1967,8 @@ class Room(CHConnection):
         self._usercount = 0
         # self.imsgs_drawn = 0 # TODO
         # self.imsgs_rendered = False # TODO
-        # TODO Propenso a errores y retrasos
         self._nomore = False  # Indica si el chat tiene más mensajes
-        # self.mgr = mgr
         super().__init__(mgr, name, getServer(name), account or ('', ''))
-        # if self.mgr:
-        # self._bgmode = int(self.mgr.bgmode)
-        # super().connect()
 
         # TODO
 
@@ -2262,11 +2274,11 @@ class Room(CHConnection):
         return False
 
     def findUser(self, name):
-        # TODO, capacidad para recibir un User
+        """Regresa un usuario si se encuentra, o None en caso contrario"""
         if isinstance(name, User):
             name = name.name
         if name.lower() in self.allusernames:
-            return User(name)
+            return User.get(name)
         return None
 
     def flagMessage(self, msg):
@@ -2304,11 +2316,8 @@ class Room(CHConnection):
         return 0
 
     def login(self, uname = None, password = None, account = None):
-        # if account: TODO login aunque tenga otra cuenta conectada?
-        #    self
-        # , self.name, _genUid(), self._currentaccount[0],
-        # self._currentaccount[1]]  # TODO comando
-        # self._currenname = self._currentaccount[0]
+        # TODO login aunque tenga otra cuenta conectada?
+
         if not account:
             account = [self._currentaccount[0], self._currentaccount[1]]
         if uname:
@@ -2324,8 +2333,8 @@ class Room(CHConnection):
         self._currentname = account[0]
         self._sendCommand('blogin', account[0], account[1])
 
-    def logout(self):  # TODO ordenar
-        """logout of user in a room"""
+    def logout(self):
+        """Salir de la cuenta y permanecer en la sala como Anon"""
         self._sendCommand("blogout")
 
     def message(self, msg, html: bool = False, canal = None, badge = 0):
@@ -2358,7 +2367,7 @@ class Room(CHConnection):
         @param msg: message
         """
         if not self._silent:
-            # TODO meme se debe enviar un string aleatorio en base 36
+            # TODO En lugar de "meme" enviar un string aleatorio en base 36
             self._sendCommand("bm", "meme", msg)
 
     def removeMod(self, user):
@@ -2366,7 +2375,7 @@ class Room(CHConnection):
             user = user.name
         self._sendCommand('removemod', user)
 
-    def setBannedWords(self, part = '', whole = ''):  # TODO documentar
+    def setBannedWords(self, part = '', whole = ''):
         """
         Actualiza las palabras baneadas para que coincidan con las recibidas
         @param part: Las partes de palabras que serán baneadas (separadas por
@@ -2374,8 +2383,12 @@ class Room(CHConnection):
         @param whole: Las palabras completas que serán baneadas, (separadas
         por coma, cualquier tamaño)
         """
-        self._sendCommand('setbannedwords', urlreq.quote(part),
-                          urlreq.quote(whole))
+        permiso = self.modflags.get(self.user.name)
+        if permiso and permiso.EDIT_BW:
+            self._sendCommand('setbannedwords', urlreq.quote(part),
+                              urlreq.quote(whole))
+            return True
+        return False
 
     def setRecordingMode(self, modo):
         self._recording = int(modo)
@@ -2445,14 +2458,14 @@ class Room(CHConnection):
         @param enabled: bool indicando si los poderes están activados o no
         @return:
         """
-        # TODO comprobar si el usuario del bot tiene los privilegios
-        if isinstance(user, User):  # TODO externalizar
+        if isinstance(user, User):
             user = user.name
 
         if user not in self.modflags or (
                 self.user not in self.mods and self.user != self.owner):
             return False
-
+        if not self.modflags.get(self.user.name).EDIT_MODS:
+            return False
         if isinstance(powers, str) and not powers.isdigit():
             powers = ModFlags.get(powers, None)
             if not powers:
@@ -2472,8 +2485,6 @@ class Room(CHConnection):
     def updateBg(self, bgc = '', ialp = '100', useimg = '0', bgalp = '100',
                  align = 'tl', isvid = '0', tile = '0', bgpic = None):
         """
-        TODO ADVERTENCIA, está en fase de pruebas y sigue sujeto a cambios.
-        usar bajo su propio riesgo
         @param bgpic: Imagen de bg. si se envía se ignora lo demás.
         @param bgc: Color del bg Hexadecimal
         @param ialp: Opacidad de la imagen
@@ -2528,6 +2539,7 @@ class Room(CHConnection):
         @param fullpic: Dirección de una imagen(local o web). Si se envia
         esto se ignorará lo demás.
         @param show: Mostrar el perfil en la lista pública
+        @param full_profile: Parte del perfil que incluye html
         @return: True o False
         """
         data = {
@@ -2555,7 +2567,7 @@ class Room(CHConnection):
                 })
         if WS.RPOST("http://chatango.com/updateprofile", data,
                     headers = headers):
-            return True
+            return True  # TODO comprobar resultado
         else:
             return False
 
@@ -2710,9 +2722,9 @@ class Room(CHConnection):
             badge = (channel & 192) // 64
             ispremium = channel & 4 > 0
             hasbg = channel & 8 > 0
-            if debug and (channel & 48 or channel & 3):  # TODO para depurar
-                pass  # TODO manipular información de los canales 1|2 (3) y
-                #  16|32(48)
+            if debug and (channel & 48 or channel & 3):
+                # TODO Descubrir y manupular canales 1|2 (3) y 16|32(48)
+                pass
             channel = ((channel & 2048) | (channel & 256)) | (
                     channel & 35072)  # Se detectan 4 canales y sus  #  #
             # combinaciones
@@ -2847,7 +2859,7 @@ class Room(CHConnection):
         if msgs:
             self._callEvent('onDeleteUser', user, msgs)
 
-    def _rcmd_denied(self, args):  # TODO petición de conexion denegada
+    def _rcmd_denied(self, args):
         """La sala posiblemente no existe"""
         # TODO asegurar que este rcmd no se envíe por otros motivos
         self.disconnect()
@@ -3227,7 +3239,8 @@ class Room(CHConnection):
         user._info = None
         self._callEvent('onUpdateProfile', user)
 
-    def _rcmd_updgroupinfo(self, args):  # TODO documentar
+    def _rcmd_updgroupinfo(self, args):
+        """Se ha actualizado la información de la sala"""
         self._info = Room._INFO(urlreq.unquote(args[0]),
                                 urlreq.unquote(args[1]))
         self._callEvent('onUpdateInfo')
@@ -3352,7 +3365,7 @@ class Gestor:
         Regresa una lista con los nombres de salas en las que se encuentra el
         usuario
         """
-        if isinstance(name, User):  # TODO externalizar
+        if isinstance(name, User):
             name = name.name
         return [x.name for x in list(self._rooms.values()) if x.findUser(name)]
 
@@ -3382,7 +3395,7 @@ class Gestor:
         """
         if account is None:
             account = self._accounts[0]
-        if isinstance(account, str):  # TODO externalizar
+        if isinstance(account, str):
             cuenta = {k.lower(): [k, v] for k, v in self._accounts}.get(
                     account.lower(), self._accounts[0])
             cuenta[0] = account
@@ -3426,80 +3439,14 @@ class Gestor:
             # con = Room(room, self, account)
             # self._rooms[room] = con
             # Every room makes this on its own
-            """"# try:
-            if self._running:
-                with self.connlock:
-                    conns = self.getConnections()
-                    socks = [x.sock for x in conns]
-                    wsocks = [x.sock for x in conns if x.wbuf]
-                    if not conns and not socks and not wsocks:
-                        rd, wr, sp = [], [], []
-                    else:
-                        rd, wr, sp = select.select(socks, wsocks, socks,
-                                                   self._TimerResolution)
-                for sock in wr:  # Enviar
-                    try:
-                        con = [x for x in conns if x.sock == sock][0]
-                        with self.connlock:
-                            if con.sock:
-                                size = sock.send(con.wbuf)
-                                con._wbuf = con.wbuf[size:]
-                                # TODO para la ordenacion
-                                #  de mensajes  # while con.wbuf.split(  #  #
-                                #  b'\x81') and len(con.wbuf.split(  #  #
-                                # b'\x81'))>1:  #    size = sock.send(  #  #
-                                # b'\x81'+con.wbuf.split(b'\x81')[1])  #  #
-                                #  con._wbuf = con.wbuf[size:]  # else:  #  #
-                                #  size = sock.send(con.wbuf)  #    con._wbuf
-                                #  = con.wbuf[size:]
-                    except Exception as e:
-                        if debug:
-                            print("Error sock.send " + str(e), sys.stderr)
-
-                for sock in rd:  # Recibir
-                    con = [x for x in conns if x.sock == sock][0]
-                    try:
-                        chunk = None
-                        with self.connlock:
-                            if con.sock:
-                                chunk = sock.recv(1024)
-                        if chunk:
-                            con.onData(chunk)
-                        elif chunk is not None:
-                            # Conexión perdida
-                            if not con._connected:  # Nunca se recibió
-                                # comandos de la conexión
-                                con.disconnect()
-                            else:
-                                con.reconnect()  # TODO ConnectionRefusedError
-                    except socket.error as cre:  # socket.error -
-                        # ConnectionResetError
-                        # TODO esto no funciona si hay muchas salas
-                        self.test = cre  # variable de depuración para android
-                        print('[%s]Conexión perdida, reintentando en 10 '
-                              'segundos...' % con)
-                        counter = con.attempts or 1  # Intentos de conexion a
-                        #  la sala
-                        while counter:
-                            try:
-                                con.reconnect()
-                                counter = 0
-                                # TODO asegurar el reinicio del contador
-                            except Exception as sgai:  # socket.gaierror:  #
-                                # En caso de que no haya internet
-                                print('[{}][{:^5}] Aún no hay internet.[{'
-                                      '}]'.format(
-                                        time.strftime('%I:%M:%S %p'),
-                                        counter, sgai),
-                                        file = sys.stderr)
-                                counter += 1
-                                time.sleep(10)
-            """
-            # self._tick()
 
         # Finish
+        # Cerrar conexiones
         for conn in self.getConnections():
             conn.disconnect()
+        # Cancelar tareas
+        for x in list(self._tasks):
+            x.cancel()
 
     def removeTask(self, task):
         """Eliminar una tarea"""
@@ -3510,12 +3457,12 @@ class Gestor:
         """Detiene al bot"""
         self._running = False
         # TODO comprobar si todo esto es necesario
-        for x in list(self._tasks):
-            x.cancel()
-        for x in list(self.rooms):
-            x.disconnect()
-        if self.pm:
-            self.pm.disconnect()
+        # for x in list(self._tasks):
+        #    x.cancel()
+        # for x in list(self.rooms):
+        #    x.disconnect()
+        # if self.pm:
+        #    self.pm.disconnect()
 
     def enableBg(self, activo = True):
         """Enable background if available."""
@@ -3765,14 +3712,6 @@ class Gestor:
         @param user: Usuario al que le han cambiado sus privilegios
         @param privs: Nombres de los privilegios modificados(nombres según
         modflags)
-        """
-        pass
-
-    def onModsChange(self, room, user):
-        """
-        Cuando cambian los permisos de un moderador en la sala
-        @param room: Sala donde ocurre el cambio
-        @param user: Usuario al que se le han cambiado los permisos
         """
         pass
 
