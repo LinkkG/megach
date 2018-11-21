@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.11
+Version: 1.5.12
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.11'
+version = 'M1.5.12'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1156,7 +1156,8 @@ class WSConnection:
                 if not self._fedder:
                     self._fedder = threading.Thread(
                             target = self._feed,
-                            name = self._name or 'WSConnection'
+                            name = self._name or 'WSConnection',
+                            daemon = True
                             )
                     self._fedder.start()
                 return True
