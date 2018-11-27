@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.13
+Version: 1.5.14
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.13'
+version = 'M1.5.14'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -886,7 +886,9 @@ class User:
 
     def removeSessionId(self, room, sid):
         if room in self._sids:
-            if sid in self._sids[room]:
+            if not sid:
+                self._sids[room].clear()
+            elif sid in self._sids[room]:
                 self._sids[room].remove(sid)
             if len(self._sids[room]) == 0:
                 del self._sids[room]
@@ -1135,6 +1137,9 @@ class WSConnection:
             if self._sock:
                 self._sock.close()
             # TODO do i need to clear session ids?
+            if self._name != 'PM':
+                for x in self.userlist:
+                    x.removeSessionId(self, 0)
             self._sock = None
             self._serverheaders = b''
             if self._pingTask:
@@ -2252,7 +2257,7 @@ class Room(CHConnection):
 
     def clearall(self):  # TODO
         """Borra todos los mensajes"""
-        if self.user == self._owner or self._user in self._mods and \
+        if self.user == self._owner or self.user in self._mods and \
                 self._mods.get(
                         self._user).EDIT_GROUP:
             self._sendCommand("clearall")
@@ -2648,7 +2653,12 @@ class Room(CHConnection):
         self._sendCommand(*__reg2)
 
     def _reload(self):
-        self._sendCommand("reload_init_batch")
+        # self._sendCommand("reload_init_batch")
+        self._sendCommand("gparticipants")
+        self._sendCommand("getpremium", "l")
+        self._sendCommand('getannouncement')
+        self.requestBanlist()
+        self.requestUnBanlist()
 
     @staticmethod
     def _parseFlags(flags: str, molde: dict) -> Struct:  # TODO documentar
@@ -2721,6 +2731,10 @@ class Room(CHConnection):
         ip = args[6]  # Ip del usuario
         channel = args[7] or 0
         unknown2 = args[8]  # TODO examinar este dato
+        if unknown2:
+            print(
+                '[_rcmd_b]Encontrado un dato desconocido, favor avisar al '
+                'desarrollador: "' + unknown2 + '"')
         rawmsg = ':'.join(args[9:])
         badge = 0
         ispremium = False
@@ -2992,11 +3006,7 @@ class Room(CHConnection):
 
     def _rcmd_inited(self, args = None):  # TODO
         """En el chat esto desactiva la animación de espera"""
-        self._sendCommand("gparticipants")
-        self._sendCommand("getpremium", "l")
-        self._sendCommand('getannouncement')
-        self.requestBanlist()
-        self.requestUnBanlist()
+        self._reload()
         if self.attempts == 1:
             self._callEvent("onConnect")
         else:
@@ -3032,7 +3042,8 @@ class Room(CHConnection):
             mods[utmp] = self._parseFlags(powers, ModFlags)
             mods[utmp].isadmin = int(powers) & AdminFlags != 0
 
-        if self._user not in pre:  # Si el bot no estaba en los mods
+        if self.user not in pre and self.user in mods:
+            # Si el bot no estaba en los mods
             self._callEvent('onModAdd', self.user)
             return
 
