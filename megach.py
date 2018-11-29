@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
     Megamaster12
     TheClonerx
-Version: 1.5.14
+Version: 1.5.15
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.14'
+version = 'M1.5.15'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1114,7 +1114,7 @@ class WSConnection:
         self._pingTask = None
 
     def __del__(self):
-        print("Desconectado sala en el aire")
+        # print("Desconectado sala en el aire")
         self._disconnect()
 
     def _callEvent(self, evt, *args, **kw):
@@ -1210,28 +1210,28 @@ class WSConnection:
                         except Exception as e:
                             if debug:
                                 print("Error sock.send " + str(e), sys.stderr)
-                    for x in rd:
+                for x in rd:
 
-                        chunk = None
-                        # with self._tlock:
-                        if self._sock:
-                            chunk = self._sock.recv(1024)
+                    chunk = None
+                    # with self._tlock:
+                    if self._sock:
+                        chunk = self._sock.recv(1024)
 
-                        if chunk:
-                            #    if self._name == 'PM':
-                            #        print("%s GOT %s"%(str(self).upper(),
-                            # str(chunk)))
-                            with WSConnection._SAFELOCK:
-                                self.onData(chunk)
-                        elif chunk is not None:
-                            # Conexión perdida
-                            with WSConnection._SAFELOCK:
-                                if not self._serverheaders:  # Nunca se recibió
-                                    # comandos de la conexión
-                                    self.disconnect()
-                                else:
-                                    self.reconnect()  # TODO
-                                    # ConnectionRefusedError
+                    if chunk:
+                        #    if self._name == 'PM':
+                        #        print("%s GOT %s"%(str(self).upper(),
+                        # str(chunk)))
+                        with WSConnection._SAFELOCK:
+                            self.onData(chunk)
+                    elif chunk is not None:
+                        # Conexión perdida
+                        with WSConnection._SAFELOCK:
+                            if not self._serverheaders:  # Nunca se recibió
+                                # comandos de la conexión
+                                self.disconnect()
+                            else:
+                                self.reconnect()  # TODO
+                                # ConnectionRefusedError
             except socket.error as cre:  # socket.error -
                 # ConnectionResetError
                 # TODO esto no funciona si hay muchas salas
@@ -1859,19 +1859,19 @@ class PM(CHConnection):
         self._history.append(msg)
         self._callEvent("onPMOfflineMessage", user, msg)
 
-    def _rcmd_reload_profile(self, args):  # TODO completar
+    def _rcmd_reload_profile(self, args):  # TODO completar _reload_profile
         pass
 
-    def _rcmd_seller_name(self, args):  # TODO completar
+    def _rcmd_seller_name(self, args):  # TODO completar _seller_name
         pass
 
-    def _rcmd_status(self, args):  # TODO completar
+    def _rcmd_status(self, args):  # TODO completar _status
 
         # status:linkkg:1531458009.39:online:
         # status:linkkg:1531458452.5:app:
         pass
 
-    def _rcmd_track(self, args):  # TODO completar
+    def _rcmd_track(self, args):  # TODO completar _track
         # print("track "+str(args))
         if not self._trackqueue.empty():
             self._trackqueue.get()
@@ -1902,7 +1902,7 @@ class PM(CHConnection):
             name, last_on, is_on, idle = args[i * 4: i * 4 + 4]
             user = User(name)
             if last_on == "None":
-                pass  # in case chatango gives a "None" as data argument TODO
+                pass  # TODO in case chatango gives a "None" as data argument
             elif not is_on == "on":
                 self._status[user] = [int(last_on), False, 0]
             elif idle == '0':
@@ -3007,7 +3007,8 @@ class Room(CHConnection):
     def _rcmd_inited(self, args = None):  # TODO
         """En el chat esto desactiva la animación de espera"""
         self._reload()
-        if self.attempts == 1:
+        if self.attempts <= 1:
+            self._connectattempts = 1
             self._callEvent("onConnect")
         else:
             self._connectattempts -= 1
@@ -3031,6 +3032,7 @@ class Room(CHConnection):
         self._user = User(name,
                           nameColor = str(self._connectiontime).split('.')[0][
                                       -4:])
+        self._callEvent('onLogout')
 
     def _rcmd_mods(self, args):
         pre = self._mods
@@ -3175,13 +3177,14 @@ class Room(CHConnection):
                         self._userhistory.remove(
                                 [x for x in self._userhistory][0])
                         self._userhistory.append([contime, before])
-                    self._callEvent('onUserLogout', user, puid)
+                    self._callEvent('onUserLogout', before, puid)
             user.addPersonalUserId(self, puid)
             self._userdict[ssid] = [contime, user]
 
     def _rcmd_pwdok(self, args = None):
         """Login correcto"""
         self._user = User(self._currentname)
+        self._callEvent("onLogin")
         self._reload()
 
     def _rcmd_show_tb(self, args):  # TODO documentar
@@ -3680,6 +3683,9 @@ class Gestor:
         pass
 
     def onLeave(self, room, user, ssid):
+        pass
+
+    def onLogin(self, room, user):
         pass
 
     def onLoginFail(self, room):
