@@ -392,8 +392,8 @@ class Task:
             if not Task.ALIVE:
                 Task._THREAD = threading.Thread(target = Task._manage,
                                                 name = 'Task Manager',
-                                                args = [], kwargs = {},
-                                                daemon = True)
+                                                )
+                Task._THREAD.daemon = True
                 Task._THREAD.start()
 
     def __repr__(self):
@@ -1240,13 +1240,14 @@ class WSConnection:
                     # android
                     print('[%s]Conexión perdida, reintentando en 10 '
                           'segundos...%s' % (self, cre))
-                    self._connectattempts = 1  # Intentos de
+                    attempts = 1  # Intentos de
+                    self._connectattempts = 0
                     # conexion a
                     #  la sala
-                    while self._connectattempts:
+                    while attempts:
                         try:
                             self.reconnect()
-                            self._connectattempts = 0
+                            attempts = 0
                             # TODO asegurar el reinicio del contador
                         except Exception as sgai:  # socket.gaierror:  #
                             # En caso de que no haya internet
@@ -1258,7 +1259,7 @@ class WSConnection:
                                             self,
                                             self._connectattempts, sgai),
                                     file = sys.stderr)
-                            # self._connectattempts += 1
+                            attempts += 1
                             time.sleep(10)
 
     def _sendCommand(self, *args):
@@ -1814,6 +1815,10 @@ class PM(CHConnection):
         user = User(name)  # Usuario
         mtime = float(args[3]) - self._correctiontime
         unknown2 = args[4]  # 0 TODO what is this?
+        if unknown2:
+            print(
+                    '[_rcmd_b]Encontrado un dato desconocido, favor avisar al '
+                    'desarrollador: "' + unknown2 + '"')
         rawmsg = ':'.join(args[5:])  # Mensaje
         body, n, f = _clean_message(rawmsg, pm = True)
         nameColor = n or None
@@ -1842,6 +1847,10 @@ class PM(CHConnection):
         user = User(name)  # Usuario
         mtime = float(args[3]) - self._correctiontime
         unknown2 = args[4]  # 0 TODO what is this?
+        if unknown2:
+            print(
+                    '[_rcmd_b]Encontrado un dato desconocido, favor avisar al '
+                    'desarrollador: "' + unknown2 + '"')
         rawmsg = ':'.join(args[5:])  # Mensaje
         body, n, f = _clean_message(rawmsg, pm = True)
         nameColor = n or None
@@ -1983,8 +1992,6 @@ class Room(CHConnection):
         self._userdict = dict()  # TODO {ssid:{user},}
         self._userhistory = deque(maxlen = 10)  # TODO {{time: <user>},}
         self._usercount = 0
-        # self.imsgs_drawn = 0 # TODO
-        # self.imsgs_rendered = False # TODO
         self._nomore = False  # Indica si el chat tiene más mensajes
         super().__init__(mgr, name, getServer(name), account or ('', ''))
 
@@ -3011,7 +3018,6 @@ class Room(CHConnection):
             self._connectattempts = 1
             self._callEvent("onConnect")
         else:
-            self._connectattempts -= 1
             self._callEvent("onReconnect")
             self._connectattempts = 1
         # comprobar el tamaño máximo del  #  #
@@ -3187,11 +3193,12 @@ class Room(CHConnection):
         self._callEvent("onLogin")
         self._reload()
 
-    def _rcmd_show_tb(self, args):  # TODO documentar
+    def _rcmd_show_tb(self, args):
+        """Mostrar notificación de temporary ban"""
         self._callEvent("onFloodBan", int(args[0]))
 
     def _rcmd_tb(self, args):
-        """Flood Ban sigue activo"""
+        """Temporary ban sigue activo con el tiempo indicado"""
         self._callEvent("onFloodBanRepeat", int(args[0]))
 
     def _rcmd_u(self, args):  # TODO
@@ -3756,6 +3763,12 @@ class Gestor:
         @param user: El usuario agregado a los contactos
         """
         pass
+
+    def onPMBlock(self, pm, user):
+        pass  # TODO documentar
+
+    def onPMContactRemove(self, pm, user):
+        pass  # TODO documentar
 
     def onPMContactlistReceive(self, pm):
         """
