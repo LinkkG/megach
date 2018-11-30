@@ -1163,8 +1163,8 @@ class WSConnection:
                     self._fedder = threading.Thread(
                             target = self._feed,
                             name = self._name or 'WSConnection',
-                            daemon = True
                             )
+                    self._fedder.daemon = True
                     self._fedder.start()
                 return True
             return False
