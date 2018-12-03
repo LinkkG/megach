@@ -117,6 +117,14 @@ Badges = {
 ModChannels = Badges['shield'] | Badges['staff'] | Channels['mod']
 
 
+def _savelog(message):
+    try:
+        with open('megach.log', 'a') as f:
+            f.writelines(str(message) + '\n')
+    except Exception as e:
+        print('Error al guardar log: ' + str(e), file = sys.stderr)
+
+
 def _genUid() -> str:
     """
     Generar una uid ALeatoria de 16 dígitos.
@@ -234,12 +242,9 @@ def _clean_message(msg: str, pm: bool = False) -> [str, str, str]:
     @returns: cleaned message, n tag contents, f tag contents
     """
     n = re.search("<n(.*?)/>", msg)
-    if not pm:
-        f = re.search("<f(.*?)>", msg)
-        msg = re.sub("<f.*?>", "", msg)
-    else:
-        f = re.search("<g(.*?)>", msg)
-        msg = re.sub("<g.*?>", "", msg)
+    tag = pm and 'g' or 'f'
+    f = re.search("<" + tag + "(.*?)>", msg)
+    msg = re.sub("<" + tag + ".*?>", "", msg)
     if n:
         n = n.group(1)
     if f:
@@ -1079,15 +1084,12 @@ class Message:
 
 
 class WSConnection:
+    """Clase base para gestopmar conexiones WebSocket y mantenerlas"""
     _WSLOCK = threading.Lock()  # Para manejar las conexiones una a la vez
     _SAFELOCK = threading.Lock()
     _INSTANCES = set()
 
     def __init__(self, server, port, origin, name = 'WSConnection'):
-        """
-        Crear un nuevo proceso que se sustente solito
-        en un tread solano TODO
-        """
         self._connectiontime = 0  # Hora de inicio de la conexión
         self._correctiontime = 0  # Diferencia entre localtime y servertime
         self._connectattempts = 0
@@ -1106,15 +1108,13 @@ class WSConnection:
         self._wlock = False  # Si no se debe envíar nada al wbuf
         self._wlockbuf = b''  # Cuando no se manda al wbuf, viene acá
         self._tlock = threading.Lock()  # Para controlar esta conexion
-        # TODO usar en comandos que retornan datos
-        self._connlock = threading.Lock()
+        self._connlock = threading.Lock()  # TODO usar en comandos que retornan datos
         self._terminator = ['\x00', '\r\n\x00']
         self._pingdata = ''
         self._fedder = None
         self._pingTask = None
 
     def __del__(self):
-        # print("Desconectado sala en el aire")
         self._disconnect()
 
     def _callEvent(self, evt, *args, **kw):
@@ -1136,7 +1136,6 @@ class WSConnection:
         with self._tlock:
             if self._sock:
                 self._sock.close()
-            # TODO do i need to clear session ids?
             if self._name != 'PM':
                 for x in self.userlist:
                     x.removeSessionId(self, 0)
@@ -1234,16 +1233,13 @@ class WSConnection:
                                 # ConnectionRefusedError
             except socket.error as cre:  # socket.error -
                 # ConnectionResetError
-                # TODO esto no funciona si hay muchas salas
+                # TODO controlar tipo de error
                 with WSConnection._WSLOCK:
                     self.test = cre  # variable de depuración para
                     # android
-                    print('[%s]Conexión perdida, reintentando en 10 '
-                          'segundos...%s' % (self, cre))
+                    self._callEvent("onConnectionLost", cre)
                     attempts = 1  # Intentos de
                     self._connectattempts = 0
-                    # conexion a
-                    #  la sala
                     while attempts:
                         try:
                             self.reconnect()
@@ -1251,14 +1247,7 @@ class WSConnection:
                             # TODO asegurar el reinicio del contador
                         except Exception as sgai:  # socket.gaierror:  #
                             # En caso de que no haya internet
-                            print(
-                                    '[{}][{}][{:^5}] Aún no hay internet.[{'
-                                    '}]'.format(
-                                            time.strftime(
-                                                    '%I:%M:%S %p'),
-                                            self,
-                                            self._connectattempts, sgai),
-                                    file = sys.stderr)
+                            self._callEvent('onConnectionAttempt', sgai)
                             attempts += 1
                             time.sleep(10)
 
@@ -1548,9 +1537,10 @@ class CHConnection(WSConnection):
                                                                          ' %s '
                                                                          '' % (
                                                                              '&nbsp;')).replace(
-                    '&nbsp;  ', '&nbsp;&nbsp; ').replace('&nbsp;  ',
-                                                         '&nbsp;&nbsp; ').replace(
-                    '  ', ' &#8203; ')  # TODO 3 en adelante
+                        '&nbsp;  ', '&nbsp;&nbsp; ').replace('&nbsp;  ',
+                                                             '&nbsp;&nbsp; '
+                                                             '').replace(
+                        '  ', ' &#8203; ')  # TODO 3 en adelante
             formt = '<n{}/><f x{:0>2.2}{}="{}">{}'
             if not html:
                 msg = _fontFormat(msg)
@@ -1820,11 +1810,13 @@ class PM(CHConnection):
         user = User(name)  # Usuario
         mtime = float(args[3]) - self._correctiontime
         unknown2 = args[4]  # 0 TODO what is this?
-        if unknown2:
+        if unknown2 and debug:
             print(
                     '[_rcmd_msg][' + ':'.join(
-                        args) + ']Encontrado un dato desconocido, favor avisar al '
-                                'desarrollador')
+                            args) + ']Encontrado un dato desconocido, '
+                                    'favor avisar al '
+                                    'desarrollador', file = sys.stderr)
+            _savelog('[_rcmd_msg][' + ':'.join(args) + ']')
         rawmsg = ':'.join(args[5:])  # Mensaje
         body, n, f = _clean_message(rawmsg, pm = True)
         nameColor = n or None
@@ -1853,11 +1845,13 @@ class PM(CHConnection):
         user = User(name)  # Usuario
         mtime = float(args[3]) - self._correctiontime
         unknown2 = args[4]  # 0 TODO what is this?
-        if unknown2:
+        if unknown2 and debug:
             print(
                     '[_rcmd_msgoff][' + ':'.join(
-                        args) + ']Encontrado un dato desconocido, favor avisar al '
-                                'desarrollador')
+                            args) + ']Encontrado un dato desconocido, '
+                                    'favor avisar al '
+                                    'desarrollador', file = sys.stderr)
+            _savelog('[_rcmd_msgoff][' + ':'.join(args) + ']')
         rawmsg = ':'.join(args[5:])  # Mensaje
         body, n, f = _clean_message(rawmsg, pm = True)
         nameColor = n or None
@@ -2156,8 +2150,6 @@ class Room(CHConnection):
     def user(self):
         """Mi usuario"""
         return self._user
-
-
 
     @property
     def userlist(self):
@@ -2750,11 +2742,13 @@ class Room(CHConnection):
         ip = args[6]  # Ip del usuario
         channel = args[7] or 0
         unknown2 = args[8]  # TODO examinar este dato
-        if unknown2:
+        if unknown2 and debug:
             print(
                     '[_rcmd_b][' + ':'.join(
-                        args) + ']Encontrado un dato desconocido, favor avisar al '
-                                'desarrollador')
+                            args) + ']Encontrado un dato desconocido, '
+                                    'favor avisar al '
+                                    'desarrollador', file = sys.stderr)
+            _savelog('[_rcmd_b][' + ':'.join(args) + ']')
         rawmsg = ':'.join(args[9:])
         badge = 0
         ispremium = False
@@ -2766,8 +2760,13 @@ class Room(CHConnection):
             ispremium = channel & 4 > 0
             hasbg = channel & 8 > 0
             if debug and (channel & 48 or channel & 3):
+                print(
+                        '[_rcmd_b][' + ':'.join(
+                                args) + ']Encontrado un dato desconocido, '
+                                        'favor avisar al '
+                                        'desarrollador', file = sys.stderr)
+                _savelog('[_rcmd_b][' + ':'.join(args) + ']')
                 # TODO Descubrir y manupular canales 1|2 (3) y 16|32(48)
-                pass
             channel = ((channel & 2048) | (channel & 256)) | (
                     channel & 35072)  # Se detectan 4 canales y sus  #  #
             # combinaciones
@@ -2820,7 +2819,7 @@ class Room(CHConnection):
         self._mqueue[msgnum] = msg
 
     def _rcmd_badalias(self, args):
-        """TODO mal inicio de sesión sin clave"""
+        """TODO _rcmd_badalias mal inicio de sesión sin clave"""
         # 4 ya hay un usuario con ese nombre en la sala
         # 2 ya tienes ese alias
         # 1 La palabra está baneada en el grupo
@@ -2831,7 +2830,7 @@ class Room(CHConnection):
         # 2 significa mal clave
         pass
 
-    def _rcmd_badupdate(self, args):  # TODO
+    def _rcmd_badupdate(self, args):  # TODO completar rcmd_badupdate
         # announcement
         pass
 
@@ -3948,11 +3947,38 @@ class Gestor:
         """
         pass
 
-    def onUserLogin(self, room, user, puid):
+    def onUserLogin(self, room, user, puid):  # TODO documentar
         pass
 
-    def onUserLogout(self, room, user, puid):
+    def onUserLogout(self, room, user, puid):  # TODO documentar
         pass
+
+    def onConnectionLost(self, room, error):
+        """
+        Al perder la conexión a una sala o pm
+        @param room: Sala o PM donde ocurre el evento
+        @param error: Error de conexion que ocasionó la perdida
+        @type error: Exception
+        """
+        print(
+                "[{}][{}]: Conexión perdida, reintentando...[{}] ".format(
+                        room,
+                        time.strftime(
+                                '%I:%M:%S %p'), error), file = sys.stderr)
+
+    def onConnectionAttempt(self, room, error):
+        """
+        Al reinentar la conexión y volver a fallar
+        @param room: Sala o PM donde ocurre el evento
+        @param error: Error que ocasiona el fallo de conexión
+        @type error: Exception
+        """
+        print('[{}][{}][{:^5}] Aún no hay internet.[{}]'.format(
+                time.strftime(
+                        '%I:%M:%S %p'),
+                room,
+                room._connectattempts, error),
+                file = sys.stderr)
 
 
 class RoomManager(Gestor):
