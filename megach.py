@@ -5,9 +5,9 @@ File: megach.py
 Title: Librería de chatango
 Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
-    Megamaster12
-    TheClonerx
-Version: 1.5.15
+ Megamaster12
+ TheClonerx
+Version: 1.5.16
 """
 ################################################################
 # Imports
@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.15'
+version = 'M1.5.16'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -524,7 +524,7 @@ class WS:
         Encodear información para peticiones multipart/form-data
         @param data: Datos a enviar (diccionario)
         @param files: Archivos a enviar en formato
-            ({'filename':<name>,'content':<content>})
+         ({'filename':<name>,'content':<content>})
         @param boundary: Separador de los datos codificados
         @return: String encodeado
         """
@@ -1202,7 +1202,7 @@ class WSConnection:
                     for x in wr:
                         try:
                             # if self._name == 'PM':
-                            #    print("%s Enviando %s"%(str(self).upper(),
+                            # print("%s Enviando %s"%(str(self).upper(),
                             # str(self._wbuf)))
                             # with self._tlock:
                             size = self._sock.send(self._wbuf)
@@ -1218,8 +1218,8 @@ class WSConnection:
                         chunk = self._sock.recv(1024)
 
                     if chunk:
-                        #    if self._name == 'PM':
-                        #        print("%s GOT %s"%(str(self).upper(),
+                        # if self._name == 'PM':
+                        #  print("%s GOT %s"%(str(self).upper(),
                         # str(chunk)))
                         with WSConnection._SAFELOCK:
                             self.onData(chunk)
@@ -1531,7 +1531,7 @@ class CHConnection(WSConnection):
         # TODO comprobar  velocidad comparado con el otro
         # msg = msg.replace("<b>", "<B>").replace("</b>", "</B>").replace(
         # "<i>", "<I>").replace("</i>", "</I>").replace(
-        #         "<u>", "<U>").replace("</u>", "</U>")
+        #   "<u>", "<U>").replace("</u>", "</U>")
         if self.name == 'PM':
             formt = '<n{}/><m v="1"><g x{:0>2.2}s{}="{}">{}</g></m>'
             fc = '{:X}{:X}{:X}'.format(*tuple(
@@ -1543,9 +1543,14 @@ class CHConnection(WSConnection):
                 msg = _fontFormat(msg)
             msg = convertPM(msg)  # TODO No ha sido completamente probado
         else:  # Room
-            msg = msg.replace('\t', '&nbsp;' * 3 + ' ').replace('   ',
-                                                                ' ' +
-                                                                '&nbsp;' + ' ')  # TODO 3 en adelante
+            if not html:
+                msg = msg.replace('\t', ' %s ' % ('&nbsp;' * 2)).replace('   ',
+                                                                         ' %s '
+                                                                         '' % (
+                                                                             '&nbsp;')).replace(
+                    '&nbsp;  ', '&nbsp;&nbsp; ').replace('&nbsp;  ',
+                                                         '&nbsp;&nbsp; ').replace(
+                    '  ', ' &#8203; ')  # TODO 3 en adelante
             formt = '<n{}/><f x{:0>2.2}{}="{}">{}'
             if not html:
                 msg = _fontFormat(msg)
@@ -1817,8 +1822,9 @@ class PM(CHConnection):
         unknown2 = args[4]  # 0 TODO what is this?
         if unknown2:
             print(
-                    '[_rcmd_b]Encontrado un dato desconocido, favor avisar al '
-                    'desarrollador: "' + unknown2 + '"')
+                    '[_rcmd_msg][' + ':'.join(
+                        args) + ']Encontrado un dato desconocido, favor avisar al '
+                                'desarrollador')
         rawmsg = ':'.join(args[5:])  # Mensaje
         body, n, f = _clean_message(rawmsg, pm = True)
         nameColor = n or None
@@ -1849,8 +1855,9 @@ class PM(CHConnection):
         unknown2 = args[4]  # 0 TODO what is this?
         if unknown2:
             print(
-                    '[_rcmd_b]Encontrado un dato desconocido, favor avisar al '
-                    'desarrollador: "' + unknown2 + '"')
+                    '[_rcmd_msgoff][' + ':'.join(
+                        args) + ']Encontrado un dato desconocido, favor avisar al '
+                                'desarrollador')
         rawmsg = ':'.join(args[5:])  # Mensaje
         body, n, f = _clean_message(rawmsg, pm = True)
         nameColor = n or None
@@ -1868,8 +1875,10 @@ class PM(CHConnection):
         self._history.append(msg)
         self._callEvent("onPMOfflineMessage", user, msg)
 
-    def _rcmd_reload_profile(self, args):  # TODO completar _reload_profile
-        pass
+    def _rcmd_reload_profile(self, args):
+        user = User.get(args[0])
+        user._info = None
+        self._callEvent('onUpdateProfile', user)
 
     def _rcmd_seller_name(self, args):  # TODO completar _seller_name
         pass
@@ -2004,6 +2013,10 @@ class Room(CHConnection):
     def allshownames(self):
         """Todos los nombres de usuarios en la sala, incluyendo anons"""
         return [x.showname for x in self.alluserlist]
+
+    @property
+    def shownames(self):
+        return list(set([x.showname for x in self.userlist]))
 
     @property
     def alluserlist(self):
@@ -2144,9 +2157,7 @@ class Room(CHConnection):
         """Mi usuario"""
         return self._user
 
-    @property
-    def shownames(self):
-        return list(set([x.showname for x in self.userlist]))
+
 
     @property
     def userlist(self):
@@ -2549,8 +2560,6 @@ class Room(CHConnection):
     def updateProfile(self, age = '', gender = '', country = '', about = '',
                       fullpic = None, show = False, **kw):
         """
-        TODO sacar la parte del archivo
-        TODO eliminar la variable **kw
         Actualiza el perfil del usuario
         NOTA: Solo es posible actualizar imagen o información por separado
         @param age: Edad
@@ -2563,6 +2572,9 @@ class Room(CHConnection):
         @param full_profile: Parte del perfil que incluye html
         @return: True o False
         """
+        # TODO sacar la parte del archivo
+        # TODO eliminar la variable **kw
+        # TODO Evitar vaciar lo que no se manda
         data = {
             'u':    self._currentaccount[0], 'p': self._currentaccount[1],
             'auth': 'pwd', 'arch': 'h5', 'src': 'group', 'action': 'update',
@@ -2740,8 +2752,9 @@ class Room(CHConnection):
         unknown2 = args[8]  # TODO examinar este dato
         if unknown2:
             print(
-                '[_rcmd_b]Encontrado un dato desconocido, favor avisar al '
-                'desarrollador: "' + unknown2 + '"')
+                    '[_rcmd_b][' + ':'.join(
+                        args) + ']Encontrado un dato desconocido, favor avisar al '
+                                'desarrollador')
         rawmsg = ':'.join(args[9:])
         badge = 0
         ispremium = False
@@ -2770,7 +2783,7 @@ class Room(CHConnection):
                     # Hay anons con bots que envian malos mensajes y pueden
                     # producir fallos
                     # if debug:
-                    #    print("Found bad message "+str(args),file=sys.stderr)
+                    # print("Found bad message "+str(args),file=sys.stderr)
                     return  # TODO en estos casos el mensaje no se muestra ni
                     #  en el chat
         else:
@@ -3023,7 +3036,7 @@ class Room(CHConnection):
         # comprobar el tamaño máximo del  #  #
         # history y solicitar anteriores hasta llenar  # if len(  #  #
         # self._history) < self._history.maxlen and not self._nomore:  #
-        #    self._sendCommand("get_more:20:" + str(self._waitingmore -
+        # self._sendCommand("get_more:20:" + str(self._waitingmore -
         #  1))  # TODO revisar
 
     def _rmd_logoutfirst(self, args):
@@ -3038,7 +3051,7 @@ class Room(CHConnection):
         self._user = User(name,
                           nameColor = str(self._connectiontime).split('.')[0][
                                       -4:])
-        self._callEvent('onLogout')
+        self._callEvent('onLogout', self._user, '?')  # TODO fail aqui
 
     def _rcmd_mods(self, args):
         pre = self._mods
@@ -3489,11 +3502,11 @@ class Gestor:
         self._running = False
         # TODO comprobar si todo esto es necesario
         # for x in list(self._tasks):
-        #    x.cancel()
+        # x.cancel()
         # for x in list(self.rooms):
-        #    x.disconnect()
+        # x.disconnect()
         # if self.pm:
-        #    self.pm.disconnect()
+        # self.pm.disconnect()
 
     def enableBg(self, activo = True):
         """Enable background if available."""
