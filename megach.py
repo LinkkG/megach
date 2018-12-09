@@ -7,7 +7,7 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
  Megamaster12
  TheClonerx
-Version: 1.5.16
+Version: 1.5.17
 """
 ################################################################
 # Imports
@@ -1390,6 +1390,7 @@ class WSConnection:
         self._firstCommand = False
         self._tlock = threading.Lock()
         self._connlock = threading.Lock()
+        self._mods = dict()
 
 
 class CHConnection(WSConnection):
@@ -2109,7 +2110,7 @@ class Room(CHConnection):
     @property
     def modflags(self):
         """Flags de los mods en la sala. Se puede saber que permisos tienen"""
-        return dict([(user.name, self._mods[user]) for user in self._mods])
+        return dict([(k.name, v) for k, v in self._mods.items()])
 
     @property
     def modnames(self):
@@ -3223,7 +3224,7 @@ class Room(CHConnection):
                 msg.user._nameColor = msg.nameColor
             msg.attach(self, args[1])
             self._addHistory(msg)
-            if (msg.channel >= 4 or msg.badge) and msg.user not in [
+            if (msg.channel & ModChannels or msg.badge) and msg.user not in [
                 self.owner] + list(self.mods):  # TODO reducir
                 self._mods[msg.user] = self._parseFlags('0', ModFlags)
                 self._mods[msg.user].isadmin = False
