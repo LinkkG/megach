@@ -7,7 +7,6 @@ Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
  Megamaster12
  TheClonerx
-Version: 1.5.17
 """
 ################################################################
 # Imports
@@ -41,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.16'
+version = 'M1.5.17'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1268,7 +1267,7 @@ class WSConnection:
 
     def _ping(self):
         self._sendCommand('')
-        # TODO self._callEvent('onPing')
+        self._callEvent('onPing')
 
     def _process(self, data: str):
         """
@@ -1515,13 +1514,9 @@ class CHConnection(WSConnection):
             msg = html2.escape(msg, quote = False)
 
         msg = msg.replace('\n', '\r').replace('~', '&#126;')
-        for x in 'b i u'.split():
-            msg = msg.replace('<%s>' % x, '<%s>' % x.upper()).replace(
-                    '</%s>' % x, '</%s>' % x.upper())
-        # TODO comprobar  velocidad comparado con el otro
-        # msg = msg.replace("<b>", "<B>").replace("</b>", "</B>").replace(
-        # "<i>", "<I>").replace("</i>", "</I>").replace(
-        #   "<u>", "<U>").replace("</u>", "</U>")
+        for x in set(re.findall('<[biu]>|<biu>', msg)):
+            msg = msg.replace('<' + x + '>', '<' + x.upper() + '>').replace(
+                    '</' + x + '>', '</' + x.upper() + '>')
         if self.name == 'PM':
             formt = '<n{}/><m v="1"><g x{:0>2.2}s{}="{}">{}</g></m>'
             fc = '{:X}{:X}{:X}'.format(*tuple(
@@ -1624,8 +1619,7 @@ class PM(CHConnection):
         return [x.name for x in self.contacts]
 
     @property
-    def _getStatus(self):
-        # TODO
+    def status(self):
         return self._status
 
     def _getAuth(self, name: str, password: str):
@@ -2742,14 +2736,9 @@ class Room(CHConnection):
         msgnum = args[5]  # Número del mensaje Si no está no se debe procesar
         ip = args[6]  # Ip del usuario
         channel = args[7] or 0
-        unknown2 = args[8]  # TODO examinar este dato
+        unknown2 = args[8]  # TODO examinar codigo de banned words
         if unknown2 and debug:
-            print(
-                    '[_rcmd_b][' + ':'.join(
-                            args) + ']Encontrado un dato desconocido, '
-                                    'favor avisar al '
-                                    'desarrollador', file = sys.stderr)
-            _savelog('[_rcmd_b][' + ':'.join(args) + ']')
+            _savelog('[_rcmd_b][' + ':'.join(args) + ']' + unknown2)
         rawmsg = ':'.join(args[9:])
         badge = 0
         ispremium = False
@@ -2768,9 +2757,8 @@ class Room(CHConnection):
                                         'desarrollador', file = sys.stderr)
                 _savelog('[_rcmd_b][' + ':'.join(args) + ']')
                 # TODO Descubrir y manupular canales 1|2 (3) y 16|32(48)
-            channel = ((channel & 2048) | (channel & 256)) | (
-                    channel & 35072)  # Se detectan 4 canales y sus  #  #
-            # combinaciones
+            # Se detectan 4 canales y sus combinaciones
+            channel = ((channel & 2048) | (channel & 256)) | (channel & 35072)
         body, n, f = _clean_message(rawmsg)
         if name == "":
             nameColor = None
@@ -2784,8 +2772,8 @@ class Room(CHConnection):
                     # producir fallos
                     # if debug:
                     # print("Found bad message "+str(args),file=sys.stderr)
-                    return  # TODO en estos casos el mensaje no se muestra ni
-                    #  en el chat
+                    # TODO en estos casos el mensaje no se muestra en chatango
+                    return
         else:
             if n:
                 nameColor = n
@@ -3024,8 +3012,10 @@ class Room(CHConnection):
             self._history.appendleft(msg)
             self._callEvent("onHistoryMessage", user, msg)
 
-    def _rcmd_inited(self, args = None):  # TODO
-        """En el chat esto desactiva la animación de espera"""
+    def _rcmd_inited(self, args = None):
+        """
+        El historial y los comandos inicales se han recibido.
+        """
         self._reload()
         if self.attempts <= 1:
             self._connectattempts = 1
@@ -3033,15 +3023,11 @@ class Room(CHConnection):
         else:
             self._callEvent("onReconnect")
             self._connectattempts = 1
-        # comprobar el tamaño máximo del  #  #
-        # history y solicitar anteriores hasta llenar  # if len(  #  #
-        # self._history) < self._history.maxlen and not self._nomore:  #
-        # self._sendCommand("get_more:20:" + str(self._waitingmore -
-        #  1))  # TODO revisar
+        # TODO, rellenar history hasta el límite indicado
+        # self._sendCommand("get_more:20:" + str(self._waitingmore -  1))
 
     def _rmd_logoutfirst(self, args):
-        # TODO al intentar iniciar sesión sin haber
-        # cerrado otra
+        # TODO al intentar iniciar sesión sin haber cerrado otra
         pass
 
     def _rcmd_logoutok(self, args):

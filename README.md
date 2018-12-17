@@ -7,7 +7,7 @@ _Usada por [Roxvent](https://roxvent.chatango.com/)._
 - Group.swf / FlashGroup.swf            Original chatango flash code for rooms
 - Sweets                 [cherry.py](https://github.com/Sweets/Cherry-Blossom)
 - Nullspeaker / Lumirayz [Original ch.py](https://github.com/Nullspeaker/ch.py)
-- TheClonerx             [ch.py and _ws.py](https://github.com/TheClonerx/ch.py)
+- TheClonerx             [_ws.py](https://github.com/TheClonerx/ch.py)
 
 ## Soporta:
 - WebSockets en las conexiones
@@ -25,6 +25,8 @@ _Usada por [Roxvent](https://roxvent.chatango.com/)._
 - Configuración por usuario (se le da prioridad a configuracion por sala)
     - Fuentes
     - Colores
+# Saludos y Agradecimientos
+- Milton797 Si buscas un buen ejemplo para esta librería, puedes probar su [chatango-bot](https://github.com/Milton797/chatango-bot)
 
 # Información de contacto:
 Cualquier duda, comentario o sugerencia puedes buscarme en chatango y contactarme.
