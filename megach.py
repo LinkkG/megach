@@ -40,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.17'
+version = 'M1.5.18'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1107,7 +1107,8 @@ class WSConnection:
         self._wlock = False  # Si no se debe envíar nada al wbuf
         self._wlockbuf = b''  # Cuando no se manda al wbuf, viene acá
         self._tlock = threading.Lock()  # Para controlar esta conexion
-        self._connlock = threading.Lock()  # TODO usar en comandos que retornan datos
+        # TODO usar en comandos que retornan datos
+        self._connlock = threading.Lock()
         self._terminator = ['\x00', '\r\n\x00']
         self._pingdata = ''
         self._fedder = None
@@ -1995,34 +1996,56 @@ class Room(CHConnection):
     ####################
     # Propiedades
     ####################
+    ##########
+    # Lista de Usuarios
     @property
-    def allshownames(self):
-        """Todos los nombres de usuarios en la sala, incluyendo anons"""
-        return [x.showname for x in self.alluserlist]
+    def userlist(self):
+        """
+        Lista de usuarios en la sala, por defecto muestra todos los
+        usuarios (no anons) sin incluir sesiones extras
+        """
+        return self._getUserlist()
 
     @property
-    def shownames(self):
-        return list(set([x.showname for x in self.userlist]))
+    def anonlist(self):
+        """Lista de anons detectados"""
+        return list(set(self.alluserlist) - set(self.userlist))
 
     @property
     def alluserlist(self):
-        """Lista de todos los usuarios en la sala, incluyendo anons"""
+        """Lista de todos los usuarios en la sala (con anons)"""
         return sorted([x[1] for x in list(self._userdict.values())],
                       key = lambda z: z.name.lower())
 
+    ##########
+    # Nombres de Usuarios
+    @property
+    def usernames(self):
+        """Nombres de usuarios en la sala (sin anons)"""
+        return [x.name for x in self.userlist]
+
+    @property
+    def anonnames(self):
+        """Nombres de los anons detectados"""
+        return [x.name for x in self.anonlist]
+
     @property
     def allusernames(self):
+        """Nombres de usuarios y anons detectados"""
         return [x.name for x in self.alluserlist]
 
     @property
-    def badge(self):
-        """Insignia usada en la sala"""
-        return self._badge
+    def shownames(self):
+        """Nombres para mostrar de los usuarios (sin anons)"""
+        return list(set([x.showname for x in self.userlist]))
 
-    @badge.setter
-    def badge(self, value):
-        self._badge = value
+    @property
+    def allshownames(self):
+        """Todos los nombres de usuarios en la sala (con anons)"""
+        return [x.showname for x in self.alluserlist]
 
+    ##########
+    # Bans
     @property
     def banlist(self):
         """La lista de usuarios baneados en la sala"""
@@ -2030,12 +2053,25 @@ class Room(CHConnection):
 
     @property
     def bannames(self):
+        """Nombres de usuarios baneados"""
         return [x.name for x in self.banlist]
 
     @property
-    def botname(self):  # TODO anon o temp !#
-        """Nombre del bot en la sala, TODO esto o currentname"""
-        return self.name
+    def unbanlist(self):
+        """Lista de usuarios desbaneados"""
+        return list(set(x.target.name for x in self._unbanqueue))
+
+    ##########
+    # Insignias y canales
+    @property
+    def badge(self):
+        """Insignia usada en la sala"""
+        return self._badge
+
+    @badge.setter
+    def badge(self, value):
+        """Cambiamos la insignia usada en los mensajes"""
+        self._badge = value  # TODO quitar private o mejorar badge.setter
 
     @property
     def channel(self):
@@ -2044,28 +2080,35 @@ class Room(CHConnection):
 
     @channel.setter
     def channel(self, value):
-        self._channel = value
+        self._channel = value  # TODO quitar private o mejorar channel.setter
+
+    ##########
+    # Otros ajustes
+    @property
+    def flags(self):
+        return self._flags
+
+    @flags.setter  # TODO ajustar flags.setter para cambiar la sala
+    def flags(self, value):
+        self._flags = value
+
+    @property
+    def botname(self):  # TODO anon o temp !#
+        """Nombre del bot en la sala, """
+        # TODO botname o currentname
+        return self.name
 
     @property
     def currentname(self):
         """
         Nombre de usuario que el bot tiene en la sala
-        TODO carece de utilidad si se puede usar user.name
+        # TODO carece de utilidad si se puede usar user.name
         """
         return self._currentname
 
     @property
-    def flags(self):
-        return self._flags
-
-    @flags.setter  # TODO ajustarlo para cambiar la sala
-    def flags(self, value):
-        self._flags = value
-
-    @property
     def about(self):
-        return _clean_message(urlreq.unquote(self.info.about))[
-                   0] or None
+        return _clean_message(urlreq.unquote(self.info.about))[0] or None
 
     @property
     def title(self):
@@ -2135,21 +2178,9 @@ class Room(CHConnection):
         return self._silent
 
     @property
-    def unbanlist(self):
-        return list(set(x.target.name for x in self._unbanqueue))
-
-    @property
     def user(self):
         """Mi usuario"""
         return self._user
-
-    @property
-    def userlist(self):
-        """
-        Lista de usuarios en la sala, por defecto muestra todos los
-        usuarios (no anons) sin incluir sesiones extras
-        """
-        return self._getUserlist()
 
     @property
     def alluserCount(self):
@@ -2162,14 +2193,6 @@ class Room(CHConnection):
             return len(self.userlist)
         else:
             return self._usercount
-
-    @property
-    def usernames(self):
-        """
-        Nombres de usuarios en la sala. Por defecto usado los valores de
-        userlist
-        """
-        return [x.name for x in self.userlist]
 
     @property
     def userhistory(self):
@@ -2656,7 +2679,10 @@ class Room(CHConnection):
 
     def _reload(self):
         # self._sendCommand("reload_init_batch")
-        self._sendCommand("gparticipants")
+        if self.userCount <= 1000:
+            self._sendCommand("g_participants:start")
+        else:
+            self._sendCommand("gparticipants:start")
         self._sendCommand("getpremium", "l")
         self._sendCommand('getannouncement')
         self.requestBanlist()
@@ -2770,6 +2796,8 @@ class Room(CHConnection):
                 # name=[u.name for u in self.userlist if u.sessionids==p]
                 if n.isdigit():
                     name = "!" + getAnonName(puid, n)
+                elif all(x in string.hexdigits for x in n):
+                    name = "!" + getAnonName(puid, str(int(n, 16)))
                 else:
                     # Hay anons con bots que envian malos mensajes y pueden
                     # producir fallos
@@ -3094,7 +3122,7 @@ class Room(CHConnection):
     def _rcmd_ok(self, args):
         self._owner = User(args[0])
         self._puid = args[1]  # TODO definir puid y sessionid
-        self._authtype = args[2]  #TODO M=Ok, N= ? C=??
+        self._authtype = args[2]  # TODO M=Ok, N= ? C=??
         self._currentname = args[3]
         self._connectiontime = args[4]
         self._correctiontime = int(float(self._connectiontime) - time.time())
@@ -3169,6 +3197,10 @@ class Room(CHConnection):
                 self._callEvent('onAnonJoin', user, puid)
             # Agregar la sesión a la sala
             self._userdict[ssid] = [contime, user]
+            lista = [x[1] for x in self._userhistory]
+            if user in lista:
+                self._userhistory.remove(
+                        [x for x in self._userhistory if x[1] == user][0])
         else:  # 2 Account Change
             # Quitar la cuenta anterior de la lista y agregar la nueva
             # TODO conectar cuentas que han cambiado usando este método
