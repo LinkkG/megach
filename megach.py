@@ -6,7 +6,6 @@ Title: Librería de chatango
 Original Author: Megamaster12 <supermegamaster32@gmail.com>
 Current Maintainers and Contributors:
  Megamaster12
- TheClonerx
 """
 ################################################################
 # Imports
@@ -40,7 +39,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.18'
+version = 'M1.5.19'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -1686,7 +1685,7 @@ class PM(CHConnection):
             self._blocklist.add(User(user))
             self._callEvent("onPMBlock", User(user))
 
-    def unblock(self, user):  # TODO
+    def unblock(self, user):  # TODO mejorar y probar
         """unblock a person"""
         if user in self._blocklist:
             self._sendCommand("unblock", user.name)
@@ -2766,7 +2765,7 @@ class Room(CHConnection):
         ip = args[6]  # Ip del usuario
         channel = args[7] or 0
         unknown2 = args[8]  # TODO examinar codigo de banned words
-        if unknown2 and debug:
+        if unknown2 and debug:  # Banned Message
             _savelog('[_rcmd_b][' + ':'.join(args) + ']' + unknown2)
         rawmsg = ':'.join(args[9:])
         badge = 0
@@ -2811,8 +2810,12 @@ class Room(CHConnection):
             else:
                 nameColor = None
         user = User(name, ip = ip, isanon = name[0] in '#!')  # TODO
+        # Detect changes on ip or premium data
+        if user.ispremium != ispremium:
+            user._info = None
         if ip and ip != user.ip:
             user._ip = ip
+
         if f:
             fontSize, fontColor, fontFace = _parseFont(f.strip())
         else:
@@ -2883,7 +2886,7 @@ class Room(CHConnection):
 
     def _rcmd_bw(self, args):  # Palabras baneadas en el chat
         # TODO, actualizar el registro del chat
-        parts, whole = '', ''
+        part, whole = '', ''
         if args:
             part = urlreq.unquote(args[0])
         if len(args) > 1:
@@ -2892,6 +2895,7 @@ class Room(CHConnection):
             self._bwqueue = [self._bwqueue.split(':', 1)[0] + ',' + args[0],
                              self._bwqueue.split(':', 1)[1] + ',' + args[1]]
             self.setBannedWords(*self._bwqueue)  # TODO agregar un callEvent
+        self._callEvent("onBannedWordsUpdate", part, whole)
 
     def _rcmd_clearall(self, args):  # TODO comentar
         self._callEvent("onClearall", args[0])
@@ -3101,7 +3105,7 @@ class Room(CHConnection):
     def _rcmd_miu(self, args):
         """Recarga la imagen y/o bg del usuario en cuestión"""
         # TODO el nombre onPictureChange está ok?
-        self._callEvent('onPictureChange', User(args[0]))
+        self._callEvent('onBgChange', User(args[0]))
 
     def _rcmd_mustlogin(self, args = None):
         """Debes logearte para participar"""
@@ -3595,6 +3599,15 @@ class Gestor:
         """
         pass
 
+    def onBannedWordsUpdate(self, room, part, whole):
+        """
+        Al cambiar/recibir las palabras baneadas en la sala
+        @param room: Sala donde ocurre el evento
+        @param part: Partes de palabras baneadas
+        @param whole: Palabras completas baneadas
+        """
+        pass
+
     def onAnonBan(self, room, user, target):
         """
         Al ser baneado un anon en la sala
@@ -3873,6 +3886,10 @@ class Gestor:
         pass
 
     def onPMDisconnect(self, pm):
+        """
+        Al desconectarse del PM
+        @param pm: El  PM
+        """
         pass
 
     def onPMMessage(self, pm, user, message):
@@ -3894,9 +3911,9 @@ class Gestor:
         """
         pass
 
-    def onPictureChange(self, room, user):
+    def onBgChange(self, room, user):
         """
-        Cuando un usuario cambia su imagen de perfil en una sala
+        Cuando un usuario cambia su BackGround[BG] en una sala
         @param room: La sala en la que se cambió la imagen
         @param user: El usuario
         """
