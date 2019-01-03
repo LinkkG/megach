@@ -39,7 +39,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.19'
+version = 'M1.5.20'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -2231,7 +2231,7 @@ class Room(CHConnection):
         """
         ul = []
         if not memory:
-            ul = [x[1] for x in self._userdict.values() if
+            ul = [x[1] for x in self._userdict.copy().values() if
                   anons or not x[1].isanon]
         elif type(memory) == int:
             ul = set(map(lambda x: x.user, list(self._history)[
