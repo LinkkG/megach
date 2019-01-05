@@ -2795,7 +2795,7 @@ class Room(CHConnection):
                 # name=[u.name for u in self.userlist if u.sessionids==p]
                 if n.isdigit():
                     name = "!" + getAnonName(puid, n)
-                elif all(x in string.hexdigits for x in n):
+                elif n and all(x in string.hexdigits for x in n):
                     name = "!" + getAnonName(puid, str(int(n, 16)))
                 else:
                     # Hay anons con bots que envian malos mensajes y pueden
