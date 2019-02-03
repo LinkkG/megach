@@ -113,14 +113,14 @@ class Mibot(megach.Gestor):
                     room.message("o(^^o) ---- ^(oo)^ ---- (o^^)o")
 
                 # Conectarse a una sala distinta
-                elif cmd in ['conecta', 'join'] and user.name in owners:
+                elif cmd in ['conecta', 'join'] and user.name in config.owners:
                     if self.joinRoom(args):
                         room.message("Conectado ♪")
                     else:
                         room.message("No puedo ir...")
 
                 # Desconectarse de alguna sala
-                elif cmd == "desconecta" and user.name in owners:
+                elif cmd == "desconecta" and user.name in config.owners:
                     if args.lower() in self._rooms:
                         self.leaveRoom(args)
                         room.message("Desconectado")
@@ -149,7 +149,7 @@ class Mibot(megach.Gestor):
                 ################################################################
                 # Sección para desarrolladores
                 ################################################################
-                if user.name in owners:
+                if user.name in config.owners:
                     if cmd in ['eval', 'ev'] and args:
                         args = message.fullbody.split(' ', 1)[1]
                         try:
