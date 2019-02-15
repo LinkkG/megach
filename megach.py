@@ -40,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.21'
+version = 'M1.5.22'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -705,6 +705,7 @@ class User:
                         'fullprofile'])
 
     def __new__(cls, name, **kwargs):
+        # TODO obtener fuentes por defecto
         if name is None:
             name = ""
         key = name.lower()
@@ -1223,7 +1224,10 @@ class WSConnection:
                         chunk = self._sock.recv(1024)
 
                     if chunk:
-                        threading.Thread(target=self.onData, name="Process", args=(chunk,)).start()
+                        self.onData(chunk)
+                        # TODO calificar comandos de respuesta instantanea
+                        # TODO separar esos _rcmd_ y usar un único thread para ellos
+                        # threading.Thread(target=self.onData, name="Process", args=(chunk,)).start()
                     elif chunk is not None:
                         # Conexión perdida
                         with WSConnection._SAFELOCK:
@@ -2723,7 +2727,12 @@ class Room(CHConnection):
         @param tiempo: Cada cuanto enviar el anuncio, en segundos (minimo 60)
         @param enabled: Si el anuncio está activado o desactivado (defecto True)
         Si solo se manda enabled, se cambia con el anuncio que ya estaba en
-        la sala"""
+        la sala
+        0=Off + No bg
+        1=On  + No bg
+        2=Off + BG
+        3=On  + BG
+        """
         if self.owner != self.user and (
                 self.user not in self.mods or not self.modflags.get(
                 self.user.name).EDIT_GP_ANNC):
@@ -2750,8 +2759,11 @@ class Room(CHConnection):
 
     def _rcmd_annc(self, args):
         self._announcement[0] = int(args[0])
-        self._announcement[2] = ':'.join(args[2:])
-        self._callEvent('onAnnouncementUpdate', args[0] != '0')  # TODO escribir
+        anc = ':'.join(args[2:])
+        if anc != self._announcement[2]:
+            self._announcement[2] = anc
+            self._callEvent('onAnnouncementUpdate', args[0] != '0')
+        self._callEvent('onAnnouncement', args[0] != '0')
 
     def _rcmd_b(self, args):  # TODO reducir  y unificar con rcmd_i
         # TODO el reconocimiento de otros bots en anon está incompleto
@@ -3587,6 +3599,10 @@ class Gestor:
         @param hexcolor: Color en hexadecimal tipo string
         """
         self.user._nameColor = hexcolor
+
+    def onAnnouncement(self):
+        """Al recibir anuncios de la sala"""
+        pass
 
     def onAnnouncementUpdate(self, room, active):
         """
