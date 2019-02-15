@@ -40,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.22.2'
+version = 'M1.5.22.3'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -2763,7 +2763,7 @@ class Room(CHConnection):
         if anc != self._announcement[2]:
             self._announcement[2] = anc
             self._callEvent('onAnnouncementUpdate', args[0] != '0')
-        self._callEvent('onAnnouncement', args[0] != '0')
+        self._callEvent('onAnnouncement', anc)
 
     def _rcmd_b(self, args):  # TODO reducir  y unificar con rcmd_i
         # TODO el reconocimiento de otros bots en anon está incompleto
