@@ -40,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.22'
+version = 'M1.5.22.1'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -3600,8 +3600,11 @@ class Gestor:
         """
         self.user._nameColor = hexcolor
 
-    def onAnnouncement(self):
-        """Al recibir anuncios de la sala"""
+    def onAnnouncement(self, announcement):
+        """
+        Al recibir anuncios de la sala
+        @param announcement: Anuncio recibido
+        """
         pass
 
     def onAnnouncementUpdate(self, room, active):
