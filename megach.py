@@ -40,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.23'
+version = 'M1.5.23.1'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -3095,9 +3095,10 @@ class Room(CHConnection):
             mods[utmp].isadmin = int(powers) & AdminFlags != 0
         tuser = User(self.currentname)
         # TODO reducir
-        if self.user not in pre and self.user in mods and tuser not in pre and tuser not in mods:
+        if (self.user not in pre and self.user in mods) or (tuser not in pre and tuser in mods):
             # Si el bot no estaba en los mods
-            self._callEvent('onModAdd', self.user)
+            if self.user == tuser:
+                self._callEvent('onModAdd', self.user)
             return
 
         for user in self.mods - set(pre.keys()):  # Con Mod
