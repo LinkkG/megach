@@ -1,4 +1,4 @@
-#!/usr/bin python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 File: megach.py
@@ -40,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.22.3'
+version = 'M1.5.23'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -799,7 +799,8 @@ class User:
         return self._nameColor
 
     @property
-    def namecolor(self):  # TODO
+    def namecolor(self):
+        """Color del nombre en formato html para chatango(hex3 compatible con PM)"""
         return '<n%s/>' % (
             self.nameColor[::2] if len(self.nameColor) == 6 else self.nameColor[
                                                                  :3])
@@ -1111,7 +1112,6 @@ class WSConnection:
         self._port = port or 443  # El puerto de la conexión
         self._server = server
         self._name = name
-        self._connectiontime = 0  # Hora del servidor a la que se entra
         self._serverheaders = b''  # Las caberceras de respuesta recibidas
         self._sock = None
         self._rbuf = b''  # El buffer de lectura  de la conexión
@@ -1367,7 +1367,7 @@ class WSConnection:
                     # El servidor quiere cerrar la conexión
                     print(self._name + ' El servidor ha anulado la conexión',
                           file = sys.stderr)
-                    self._disconnect()
+                    self._disconnect()  # TODO reconectar
                 elif info.opcode == WS.TEXT:
                     # El frame contiene datos
                     self._process(payload)
@@ -2098,15 +2098,7 @@ class Room(CHConnection):
     def botname(self):  # TODO anon o temp !#
         """Nombre del bot en la sala, """
         # TODO botname o currentname
-        return self.name
-
-    @property
-    def currentname(self):
-        """
-        Nombre de usuario que el bot tiene en la sala
-        # TODO carece de utilidad si se puede usar user.name
-        """
-        return self._currentname
+        return self.user.name
 
     @property
     def about(self):
@@ -2266,7 +2258,7 @@ class Room(CHConnection):
     def banMessage(self, msg: Message) -> bool:
         if self.getLevel(self.user) > 0:
             name = '' if msg.user.name[0] in '!#' else msg.user.name
-            self.rawBan(msg.unid, msg.ip, name)
+            self._rawBan(msg.unid, msg.ip, name)
             return True
         return False
 
@@ -2644,7 +2636,7 @@ class Room(CHConnection):
         if res:
             res = res.read().decode('utf-8')
             if 'success' in res:
-                if url:  # TODO
+                if url:  # TODO enviar imágenes en distintas calidades
                     url = "http://ust.chatango.com/um/%s/%s/%s/img/t_%s.jpg"
                     url %= (
                         self.user.name[0], self.user.name[1],
@@ -2691,15 +2683,14 @@ class Room(CHConnection):
         self.requestUnBanlist()
 
     @staticmethod
-    def _parseFlags(flags: str, molde: dict) -> Struct:
+    def _parseFlags(flags: int, molde: dict) -> Struct:
         """
         Leer flags desde un número, y llenar un Molde con ellos
         @param flags: Flags int
-        @param molde: Molde a rellenar
+        @param molde: Molde del cual rellenar
         @return: Struct
         """
-        # TODO documentar
-        flags = int(flags)  # TODO cambiar a Int
+        flags = int(flags)
         result = Struct(**dict([(mf, molde[mf] & flags != 0) for mf in molde]))
         result.value = flags
         return result
@@ -2709,8 +2700,15 @@ class Room(CHConnection):
                           str(int(time.time() + self._correctiontime)), 'next',
                           '500', 'anons', '1')
 
-    def rawBan(self, unid, ip, name):  # TODO documentar
-        self._sendCommand("block", unid, ip, name)
+    def _rawBan(self, msgid, ip, name):
+        """
+        Ban user with received data
+        @param msgid: Message id
+        @param ip: user IP
+        @param name: chatango user name
+        @return: bool
+        """
+        self._sendCommand("block", msgid, ip, name)
 
     def rawUnban(self, name, ip, unid):
         self._sendCommand("removeblock", unid, ip, name)
@@ -2906,7 +2904,10 @@ class Room(CHConnection):
             self.setBannedWords(*self._bwqueue)  # TODO agregar un callEvent
         self._callEvent("onBannedWordsUpdate", part, whole)
 
-    def _rcmd_clearall(self, args):  # TODO comentar
+    def _rcmd_clearall(self, args):
+        """
+        Resultados del comando. Si se borró el chat args=ok, sino dará un error
+        """
         self._callEvent("onClearall", args[0])
 
     def _rcmd_delete(self, args):
@@ -3070,7 +3071,7 @@ class Room(CHConnection):
         # TODO, rellenar history hasta el límite indicado
         # self._sendCommand("get_more:20:" + str(self._waitingmore -  1))
 
-    def _rmd_logoutfirst(self, args):
+    def _rcmd_logoutfirst(self, args):
         # TODO al intentar iniciar sesión sin haber cerrado otra
         pass
 
@@ -3092,8 +3093,9 @@ class Room(CHConnection):
             utmp = User.get(name)
             mods[utmp] = self._parseFlags(powers, ModFlags)
             mods[utmp].isadmin = int(powers) & AdminFlags != 0
-
-        if self.user not in pre and self.user in mods:
+        tuser = User(self.currentname)
+        # TODO reducir
+        if self.user not in pre and self.user in mods and tuser not in pre and tuser not in mods:
             # Si el bot no estaba en los mods
             self._callEvent('onModAdd', self.user)
             return
@@ -3240,7 +3242,7 @@ class Room(CHConnection):
     def _rcmd_pwdok(self, args = None):
         """Login correcto"""
         self._user = User(self._currentname)
-        self._callEvent("onLogin")
+        self._callEvent("onLogin", self._user)
         self._reload()
 
     def _rcmd_show_tb(self, args):
@@ -3770,13 +3772,18 @@ class Gestor:
         """
         pass
 
-    def onJoin(self, room, user, ssid):
+    def onJoin(self, room, user, ssid):  # TODO comentar
         pass
 
-    def onLeave(self, room, user, ssid):
+    def onLeave(self, room, user, ssid):  # TODO comentar
         pass
 
     def onLogin(self, room, user):
+        """
+        Al loguearse como un usuario de chatango
+        @param room: Sala donde ocurre el evento
+        @param user: Mi usuario
+        """
         pass
 
     def onLoginFail(self, room):
