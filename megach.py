@@ -40,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.24'
+version = 'M1.6.0'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -711,6 +711,8 @@ class User:
         key = name.lower()
         if key in cls._users:
             for attr, val in kwargs.items():
+                if attr == 'ip' and not val:
+                    continue  # use only valid ips
                 setattr(cls._users[key], '_' + attr, val)
             return cls._users[key]
         self = super().__new__(cls)
@@ -1093,6 +1095,83 @@ class Message:
     def delete(self):
         """Borrar el mensaje de la sala (Si es mod)"""
         self._room.deleteMessage(self)
+
+    @classmethod
+    def parse(cls, room, args):
+        """Parse message from chatango args"""
+        # TODO corregir self
+        mtime = float(args[0]) - room._timecorrection
+        name, tname, puid, unid, msgid, ip, channel = args[1:8]
+        unknown2 = args[8]  # TODO examinar codigo de banned words
+        if unknown2 and debug:  # Banned Message
+            _savelog('[_rcmd_b][' + ':'.join(args) + ']' + unknown2)
+        rawmsg = ":".join(args[9:])
+        badge = 0
+        # TODO aplicar los flags
+        if channel and channel.isdigit():
+            channel = int(channel)
+            badge = (channel & 192) // 64
+            ispremium = channel & 4 > 0
+            hasbg = channel & 8 > 0
+            if debug and (channel & 48 or channel & 3):
+                print(
+                    '[_rcmd_b][' + ':'.join(
+                        args) + ']Encontrado un dato desconocido, '
+                                'favor avisar al '
+                                'desarrollador', file=sys.stderr)
+                _savelog('[_rcmd_b][' + ':'.join(args) + ']')
+                # TODO Descubrir y manupular canales 1|2 (3) y 16|32(48)
+            channel = ((channel & 2048) | (channel & 256)) | (channel & 35072)
+        body, n, f = _clean_message(rawmsg)
+        nameColor = None
+        if name == "":
+            name = "#" + tname
+            if name == "#":
+                if n.isdigit():
+                    name = "!" + getAnonName(puid, n)
+                elif n and all(x in string.hexdigits for x in n):
+                    name = "!" + getAnonName(puid, str(int(n, 16)))
+                else:
+                    name = "!" + getAnonName(puid, None)
+                    # TODO fix anon bad messages
+                    if debug:
+                        _savelog('found bad message ' + ':'.join(args))
+        else:
+            if n:
+                nameColor = n
+            else:
+                nameColor = None
+        # TODO no reemplazar ip con vacio
+        user = User(name, ip=ip, isanon=name[0] in '#!')
+        # Detect changes on ip or premium data
+        if user.ispremium != ispremium:
+            user._info = None
+        if ip and ip != user.ip:
+            user._ip = ip
+        if f:  # TODO eliminar este else
+            fontSize, fontColor, fontFace = _parseFont(f.strip())
+        else:
+            fontColor, fontFace, fontSize = None, None, None
+        self = cls(badge=badge,
+                   body=body,
+                   channel=channel,
+                   fontColor=fontColor,
+                   fontFace=fontFace,
+                   fontSize=fontSize or '11',
+                   hasbg=hasbg,
+                   msgid=msgid,
+                   ip=ip,
+                   ispremium=ispremium,
+                   nameColor=nameColor,
+                   puid=puid,
+                   raw=rawmsg,
+                   room=room,
+                   time=mtime,
+                   unid=unid,
+                   unknown2=unknown2,
+                   user=user
+                   )
+        return self
 
 
 class WSConnection:
@@ -1793,7 +1872,7 @@ class PM(CHConnection):
         print("msglexceeded", file=sys.stderr)
         pass
 
-    def _rcmd_msg(self, args):  # msg TODO
+    def _rcmd_msg(self, args):  # msg TODO unificar con Message.parse
         name = args[0] or args[1]  # Usuario o tempname
         if not name:
             name = args[2]  # Anon es unknown
@@ -2756,88 +2835,8 @@ class Room(CHConnection):
 
     def _rcmd_b(self, args):  # TODO reducir  y unificar con rcmd_i
         # TODO el reconocimiento de otros bots en anon está incompleto
-        mtime = float(args[0]) - self._timecorrection
-        name = args[1]  # Nombre de usuario si lo hay
-        tempname = args[2]  # Nombre del anon si no se ha logeado
-        puid = args[3]  # Id del usuario Si no está no se debe procesar
-        unid = args[4]  # TODO Id del mensaje?
-        msgnum = args[5]  # Número del mensaje Si no está no se debe procesar
-        ip = args[6]  # Ip del usuario
-        channel = args[7] or 0
-        unknown2 = args[8]  # TODO examinar codigo de banned words
-        if unknown2 and debug:  # Banned Message
-            _savelog('[_rcmd_b][' + ':'.join(args) + ']' + unknown2)
-        rawmsg = ':'.join(args[9:])
-        badge = 0
-        ispremium = False
-        hasbg = False
-        # TODO reemplazar por los flags
-        if channel and channel.isdigit():
-            channel = int(channel)
-            badge = (channel & 192) // 64
-            ispremium = channel & 4 > 0
-            hasbg = channel & 8 > 0
-            if debug and (channel & 48 or channel & 3):
-                print(
-                        '[_rcmd_b][' + ':'.join(
-                                args) + ']Encontrado un dato desconocido, '
-                                        'favor avisar al '
-                                        'desarrollador', file = sys.stderr)
-                _savelog('[_rcmd_b][' + ':'.join(args) + ']')
-                # TODO Descubrir y manupular canales 1|2 (3) y 16|32(48)
-            # Se detectan 4 canales y sus combinaciones
-            channel = ((channel & 2048) | (channel & 256)) | (channel & 35072)
-        body, n, f = _clean_message(rawmsg)
-        if name == "":
-            nameColor = None
-            name = "#" + tempname
-            if name == "#":
-                # name=[u.name for u in self.userlist if u.sessionids==p]
-                if n.isdigit():
-                    name = "!" + getAnonName(puid, n)
-                elif n and all(x in string.hexdigits for x in n):
-                    name = "!" + getAnonName(puid, str(int(n, 16)))
-                else:
-                    name = "!" + getAnonName(puid, None)
-                    # TODO fix anon bad messages
-                    if debug:
-                        _savelog('found bad message ' + ':'.join(args))
-        else:
-            if n:
-                nameColor = n
-            else:
-                nameColor = None
-        user = User(name, ip=ip, isanon=name[0] in '#!')
-        # Detect changes on ip or premium data
-        if user.ispremium != ispremium:
-            user._info = None
-        if ip and ip != user.ip:
-            user._ip = ip
-
-        if f:
-            fontSize, fontColor, fontFace = _parseFont(f.strip())
-        else:
-            fontColor, fontFace, fontSize = None, None, None
-        msg = Message(badge = badge,
-                      body = body,
-                      channel = channel,
-                      fontColor = fontColor,
-                      fontFace = fontFace,
-                      fontSize = fontSize or '11',
-                      hasbg = hasbg,
-                      mnum = msgnum,
-                      ip = ip,
-                      ispremium = ispremium,
-                      nameColor = nameColor,
-                      puid = puid,
-                      raw = rawmsg,
-                      room = self,
-                      time = mtime,
-                      unid = unid,
-                      unknown2 = unknown2,
-                      user = user
-                      )
-        self._mqueue[msgnum] = msg
+        msg = Message.parse(self, args)
+        self._mqueue[msg.msgid] = msg
 
     def _rcmd_badalias(self, args):
         """TODO _rcmd_badalias mal inicio de sesión sin clave"""
@@ -2991,62 +2990,10 @@ class Room(CHConnection):
         self._callEvent('onFlagsUpdate')
 
     def _rcmd_i(self, args):  # TODO
-        mtime = float(args[0]) - self._correctiontime
-        name = args[1]
-        tname = args[2]
-        puid = args[3]
-        unid = args[4]
-        msgid = args[5]
-        ip = args[6]  # TODO espacio 8
-        channel = args[7]
-        rawmsg = ":".join(args[9:])
-        msg, n, f = _clean_message(rawmsg)
-        badge = 0
-        if channel and channel.isdigit():
-            channel = int(channel)
-            badge = (channel & 192) // 64
-            channel = ((channel & 2048) | (channel & 256)) | (channel & 35072)
-        if name == "":
-            nameColor = None
-            name = "#" + tname
-            if name == "#":
-                # name=[u.name for u in self.userlist if u.sessionids==p]
-                if n.isdigit():
-                    name = "!" + getAnonName(puid, n)
-                else:
-                    # Hay anons con bots que envian malos
-                    # mensajes y pueden producir fallos
-                    return  # TODO En esos casos el mensaje no se muestra ni
-                    #  en el chat
-        else:
-            if n:
-                nameColor = _parseNameColor(n)
-            else:
-                nameColor = None
-        user = User(name)
-        # Create an anonymous message and queue it because msgid is unknown.
-        if f:
-            fontColor, fontFace, fontSize = _parseFont(f)
-        else:
-            fontColor, fontFace, fontSize = None, None, None
-        msg = Message(
-                badge = badge,
-                body = msg,
-                fontColor = fontColor,
-                fontFace = fontFace,
-                fontSize = fontSize,
-                nameColor = nameColor,
-                msgid = msgid,
-                puid = puid,
-                raw = rawmsg,
-                room = self,
-                time = mtime,
-                unid = unid,
-                user = user
-                )
+        msg = Message.parse(self, args)
         if len(self._history) <= self._history.maxlen:
             self._history.appendleft(msg)
-            self._callEvent("onHistoryMessage", user, msg)
+            self._callEvent("onHistoryMessage", msg.user, msg)
 
     def _rcmd_inited(self, args = None):
         """
