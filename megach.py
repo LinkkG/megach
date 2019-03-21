@@ -40,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.5.23.1'
+version = 'M1.5.24'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -324,15 +324,15 @@ def _fontFormat(text):
 
 
 def _videoImagePMFormat(text):
-    for x in re.findall('(https://[^\s]+outube.com/watch\?v=([^\s]+))', text):
+    for x in re.findall('(http[s]?://[^\s]+outube.com/watch\?v=([^\s]+))', text):
         original = x[0]
         cambio = '<i s="vid://yt:%s" w="126" h="96"/>' % x[1]
         text = text.replace(original, cambio)
-    for x in re.findall('(https://[^\s]+outu.be/([^\s]+))', text):
+    for x in re.findall('(http[s]?://[^\s]+outu.be/([^\s]+))', text):
         original = x[0]
         cambio = '<i s="vid://yt:%s" w="126" h="96"/>' % x[1]
         text = text.replace(original, cambio)
-    for x in re.findall("http://[^\s]+?.jpg|https://[^\s]+?.jpg", text):
+    for x in re.findall("http[s]?://[^\s]+?.jpg", text):
         text = text.replace(x, '<i s="%s" w="70.45" h="125"/>' % x)
     # print(text)
     return text
@@ -938,7 +938,7 @@ class Message:
         self._room = None
         self._raw = ""
         self._hasbg = False
-        self._ip = None
+        self._ip = ""
         self._unid = ""
         self._puid = ""
         self._nameColor = "000"
@@ -1726,20 +1726,6 @@ class PM(CHConnection):
         else:
             return None
 
-    def getIdle(self, user):  # TODO Borrar getIddle, el track es más seguro
-        """
-        Return last active time, time.time() if isn't idle, 0 if offline,
-        None if unknown
-        """
-        if user not in self._status:
-            return None
-        if not self._status[user][1]:
-            return 0
-        if not self._status[user][2]:
-            return time.time()
-        else:
-            return self._status[user][2]
-
     def message(self, user, msg, html: bool = False):
         """
         Enviar un pm a un usuario
@@ -1801,6 +1787,11 @@ class PM(CHConnection):
         # TODO desencadenar un evento al ser echado del pm
         self.disconnect()
         # self._callEvent("onKickedOff")
+
+    def _rcmd_msglexceeded(self, args):
+        # TODO terminar msglexceeded
+        print("msglexceeded", file=sys.stderr)
+        pass
 
     def _rcmd_msg(self, args):  # msg TODO
         name = args[0] or args[1]  # Usuario o tempname
@@ -1958,8 +1949,6 @@ class Room(CHConnection):
                 x[0] != '_']
 
     def __init__(self, name: str, mgr: object = None, account: tuple = None):
-        # TODO , server = None, port = None, uid = None):
-
         # Configuraciones
         self._badge = 0
         self._channel = 0
@@ -2195,10 +2184,11 @@ class Room(CHConnection):
     def getSessionlist(self, mode = 0, memory = 0):
         """
         Regresa la lista de usuarios y su cantidad de sesiones en la sala
-        @param mode: Modo 1 (User,int), 2 (name,int) 3 (showname,int)
+        @param mode: Modo 0 (User,int), 1 (name,int) 3 (showname,int)
         @param memory: int Mensajes que se verán si se revisará el historial
         @return: list[tuple,tuple,...]
         """
+        # TODO Modo 2 para la otra opcion
         if mode < 2:
             return [(x.name if mode else x, len(x.getSessionIds(self))) for x in
                     self._getUserlist(1, memory)]
@@ -2731,6 +2721,7 @@ class Room(CHConnection):
         2=Off + BG
         3=On  + BG
         """
+        # TODO usar fuentes por defecto del usuario
         if self.owner != self.user and (
                 self.user not in self.mods or not self.modflags.get(
                 self.user.name).EDIT_GP_ANNC):
@@ -3274,6 +3265,7 @@ class Room(CHConnection):
         self._ubw = args
         pass
 
+    # TODO _rcmd_proxybanned
     def _rcmd_unblocked(self, args):
         """Se ha quitado el ban a un usuario"""
         unid = args[0]
@@ -3329,6 +3321,9 @@ class Room(CHConnection):
                                 urlreq.unquote(args[1]))
         self._callEvent('onUpdateInfo')
 
+
+# TODO climited:1552105466643:
+# climited:??:command
 
 class Gestor:
     """
@@ -3583,7 +3578,7 @@ class Gestor:
         """
         task = Task(tiempo, funcion, True, *args, **kwargs)
         task.mgr = self
-        self._tasks.add(task)
+        self._tasks.add(task)  # TODO recuerda eliminar tasks obsoletos
         return task
 
     def setTimeout(self, tiempo, funcion, *args, **kwargs):
@@ -3802,6 +3797,13 @@ class Gestor:
         pass
 
     def onLogout(self, room, user, ssid):
+        """
+        Cuando un usuario sale de su cuenta en una sala
+        @param room: Sala donde ocurre el evento
+        @param user: Usuario que ha salido de su cuenta
+        @param ssid: Id de sesión que está usando el usuario
+        """
+        # TODO incluir el anon del usuario
         pass
 
     def onMessage(self, room: Room, user: User, message: Message):
