@@ -40,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M1.6.0'
+version = 'M.1.6.1'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -312,8 +312,8 @@ def _fontFormat(text):
     formats = {'/': 'I', '\*': 'B', '_': 'U'}
     for f in formats:
         f1, f2 = set(formats.keys()) - {f}
-        # find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[^\s]){2}'.format(f1, f2, f+'{1}')
-        find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[^\s]?[{2}]?){2}[{0}{1}]?[' \
+        # find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[\S]){2}'.format(f1, f2, f+'{1}')
+        find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[\S]?[{2}]?){2}[{0}{1}]?[' \
                '\s]'.format(
                 f1, f2, f)
         for x in re.findall(find, ' ' + text + ' '):
@@ -328,11 +328,11 @@ def _videoImagePMFormat(text):
         original = x[0]
         cambio = '<i s="vid://yt:%s" w="126" h="96"/>' % x[1]
         text = text.replace(original, cambio)
-    for x in re.findall('(http[s]?://[^\s]+outu.be/([^\s]+))', text):
+    for x in re.findall('(http[s]?://[\S]+outu.be/([^\s]+))', text):
         original = x[0]
         cambio = '<i s="vid://yt:%s" w="126" h="96"/>' % x[1]
         text = text.replace(original, cambio)
-    for x in re.findall("http[s]?://[^\s]+?.jpg", text):
+    for x in re.findall("http[s]?://[\S]+?.jpg", text):
         text = text.replace(x, '<i s="%s" w="70.45" h="125"/>' % x)
     # print(text)
     return text
@@ -673,8 +673,7 @@ class WS:
         @param headers: Las cabeceras de la petición post
         @return:
         """
-        if type(data) is dict:  # TODO debería hacer esto solo si es un
-            # diccionario
+        if type(data) is dict:
             data = urlparse.urlencode(data).encode('latin-1')
         elif type(data) is str:
             data = data.encode('latin-1')
@@ -1870,7 +1869,6 @@ class PM(CHConnection):
     def _rcmd_msglexceeded(self, args):
         # TODO terminar msglexceeded
         print("msglexceeded", file=sys.stderr)
-        pass
 
     def _rcmd_msg(self, args):  # msg TODO unificar con Message.parse
         name = args[0] or args[1]  # Usuario o tempname
@@ -2170,7 +2168,7 @@ class Room(CHConnection):
 
     @property
     def about(self):
-        return _clean_message(urlreq.unquote(self.info.about))[0] or None
+        return urlreq.unquote(self.info.about) or None
 
     @property
     def title(self):
@@ -3310,9 +3308,7 @@ class Gestor:
         self.bgmode = False
         self._pm = pm
 
-        if pm:
-            self._pm = PM(mgr = self, name = self.name,
-                          password = self.password)
+
 
     ####
     # Propiedades
@@ -3452,7 +3448,17 @@ class Gestor:
         """
         Poner en marcha al bot
         """
+        while self._pm == True:
+            try:
+                self._pm = PM(mgr=self, name=self.name,
+                              password=self.password)
+            except socket.gaierror as malInicio:  # En caso de que no haya internet
+                print("[{0}] No hay internet, Reintentando primera conexión en 10... ".format(
+                    time.strftime('%I:%M:%S %p')
+                ))
+                time.sleep(10)
         self.onInit()
+
         self._running = True
         self._jt = threading.Thread(target = self._joinThread,
                                     name = "Join rooms")
