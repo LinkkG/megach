@@ -40,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M.1.6.1'
+version = 'M.1.6.2'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -3434,8 +3434,12 @@ class Gestor:
     def _joinThread(self):
         while True:
             room, account = self._colasalas.get()
-            con = Room(room, self, account)
-            self._rooms[room] = con
+            try:
+                con = Room(room, self, account)
+                self._rooms[room] = con
+            except TimeoutError as fallo:
+                print("[{0}][{1}] El servidor de la sala no responde".format(
+                    time.strftime('%I:%M:%S %p'), room), file=sys.stderr)
 
     def leaveRoom(self, room):
         if isinstance(room, Room):
