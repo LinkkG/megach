@@ -40,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M.1.6.2'
+version = 'M.1.6.3'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -705,19 +705,17 @@ class User:
 
     def __new__(cls, name, **kwargs):
         # TODO obtener fuentes por defecto
-        if name is None:
-            name = ""
         key = name.lower()
         if key in cls._users:
             for attr, val in kwargs.items():
                 if attr == 'ip' and not val:
-                    continue  # use only valid ips
+                    continue  # only valid ips
                 setattr(cls._users[key], '_' + attr, val)
             return cls._users[key]
         self = super().__new__(cls)
         cls._users[key] = self
-        self._fontColor = '0'
-        self._fontFace = '0'
+        self._fontColor = '000'
+        self._fontFace = '000'
         self._fontSize = 12
         self._info = None
         self._ip = ''
@@ -878,6 +876,7 @@ class User:
 
     @property
     def premiumtime(self):
+        # TODO facilitar uso externo
         return self.info.bgtime or None
 
     sessionids = property(getSessionIds)
@@ -1089,7 +1088,6 @@ class Message:
         """Detach the Message."""
         if self._msgid is not None and self._msgid in self._room.msgs:
             self._room.msgs.pop(self._msgid)
-            self._msgid = None  # TODO esto es necesario?
 
     def delete(self):
         """Borrar el mensaje de la sala (Si es mod)"""
@@ -1751,6 +1749,7 @@ class PM(CHConnection):
             self._sendCommand("wladd", user.name)
             self._contacts.add(user)
             self._callEvent("onPMContactAdd", user)
+            return True
 
     def removeContact(self, user: str):
         """Remove Contact from PM"""
@@ -1770,10 +1769,13 @@ class PM(CHConnection):
             self._blocklist.add(User(user))
             self._callEvent("onPMBlock", User(user))
 
-    def unblock(self, user):  # TODO mejorar y probar
-        """unblock a person"""
+    def unblock(self, user):
+        """Desbloquear a alguien"""
+        if isinstance(user, User):
+            user = user.name
         if user in self._blocklist:
-            self._sendCommand("unblock", user.name)
+            self._sendCommand("unblock", user)
+            return True
 
     def track(self, user):
         """
@@ -1797,12 +1799,10 @@ class PM(CHConnection):
         except:
             return [None] * 3
 
-    def checkOnline(self, user):  # TODO borrar este def viejo checkOnline
-        """return True if online, False if offline, None if unknown"""
-        if user in self._status:
-            return self._status[user][1]
-        else:
-            return None
+    def checkOnline(self, user):
+        if isinstance(user, User):
+            user = User.name  # TODO el track necesita esto?
+        return self.pm.track(user)[-1]
 
     def message(self, user, msg, html: bool = False):
         """
@@ -1818,9 +1818,7 @@ class PM(CHConnection):
             for unimsg in msg:
                 self._sendCommand("msg", user, unimsg)
                 body, nameColor, fontSize = _clean_message(unimsg, pm = True)
-                self._callEvent('onPMMessageSend',
-                                User(user),
-                                Message(
+                tmsg = Message(
                                         body = body,
                                         nameColor = nameColor,
                                         fontSize = fontSize or '11',
@@ -1830,7 +1828,9 @@ class PM(CHConnection):
                                         time = time.time(),
                                         unid = None,
                                         user = self.user
-                                        ))
+                )
+                self._callEvent('onPMMessageSend', User(user), tmsg)
+                self._history.append(tmsg)
             return True
         return False
 
@@ -1964,10 +1964,9 @@ class PM(CHConnection):
     def _rcmd_toofast(self, args):  # TODO esto solo debería parar un momento
         self.disconnect()
 
-    def _rcmd_unblocked(self, user):
+    def _rcmd_unblocked(self, args):
         """Se ha desbloqueado un usuario del pm"""
-        if isinstance(user, str):
-            user = User.get(user)
+        user = User.get(args[0])
         if user in self._blocklist:
             self._blocklist.remove(user)
             self._callEvent("onPMUnblock", user)
@@ -2161,7 +2160,7 @@ class Room(CHConnection):
         self._flags = value
 
     @property
-    def botname(self):  # TODO anon o temp !#
+    def botname(self):
         """Nombre del bot en la sala, """
         # TODO botname o currentname
         return self.user.name
@@ -2910,9 +2909,10 @@ class Room(CHConnection):
         if len(self._history) < 20 and not self._nomore:
             self._sendCommand('get_more:20:0')
 
-    def _rcmd_deleteall(self, args):  # TODO
-        user = None
-        msgs = list()
+    def _rcmd_deleteall(self, args):
+        """Mensajes han sido borrados"""
+        user = None  # usuario borrado
+        msgs = list()  # mensajes borrados
         for msgid in args:
             msg = self._msgs.get(msgid)
             if msg and msg in self._history:
@@ -3440,6 +3440,7 @@ class Gestor:
             except TimeoutError as fallo:
                 print("[{0}][{1}] El servidor de la sala no responde".format(
                     time.strftime('%I:%M:%S %p'), room), file=sys.stderr)
+                # TODO usar evento de sala cuando el server no responde
 
     def leaveRoom(self, room):
         if isinstance(room, Room):
