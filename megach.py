@@ -40,11 +40,11 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M.1.6.3'
+version = 'M.1.6.4'
 version_info = version.split('.')
 debug = True
 ################################################################
-# Cosas del servidor, las cuentas y el manejo de mods s
+# Cosas del servidor, las cuentas y el manejo de mods
 ################################################################
 w12 = 75
 sv2 = 95
@@ -53,6 +53,11 @@ sv6 = 104
 sv8 = 101
 sv10 = 110
 sv12 = 116
+specials = {'mitvcanal': 56, 'animeultimacom': 34, 'cricket365live': 21, 'pokemonepisodeorg': 22, 'animelinkz': 20,
+            'sport24lt': 56, 'narutowire': 10, 'watchanimeonn': 22, 'cricvid-hitcric-': 51, 'narutochatt': 70,
+            'leeplarp': 27, 'stream2watch3': 56, 'ttvsports': 56, 'ver-anime': 8, 'vipstand': 21, 'eafangames': 56,
+            'soccerjumbo': 21, 'myfoxdfw': 67, 'kiiiikiii': 21, 'de-livechat': 5, 'rgsmotrisport': 51,
+            'dbzepisodeorg': 10, 'watch-dragonball': 8, 'peliculas-flv': 69, 'tvanimefreak': 54, 'tvtvanimefreak': 54}
 tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
              ["17", w12], ["18", w12], ["9", sv2], ["11", sv2], ["12", sv2],
              ["13", sv2], ["14", sv2], ["15", sv2], ["19", sv4], ["23", sv4],
@@ -217,6 +222,8 @@ def getServerNumber(group: str) -> int:
     @param group: String con el nombre de la sala
     @return: Número del servidor
     """
+    if group in specials:
+        return specials[group]
     group = group.replace("_", "q")
     group = group.replace("-", "q")
     fnv = float(int(group[0:min(5, len(group))], 36))
@@ -250,6 +257,7 @@ def _clean_message(msg: str, pm: bool = False) -> [str, str, str]:
     @rtype: str, str, str
     @returns: cleaned message, n tag contents, f tag contents
     """
+    # TODO check smileys for pm
     n = re.search("<n(.*?)/>", msg)
     tag = pm and 'g' or 'f'
     f = re.search("<" + tag + "(.*?)>", msg)
@@ -1110,7 +1118,8 @@ class Message:
             badge = (channel & 192) // 64
             ispremium = channel & 4 > 0
             hasbg = channel & 8 > 0
-            if debug and (channel & 48 or channel & 3):
+            flash = channel & 16 > 0  # TODO asignar a user|message
+            if debug and (channel & 35):
                 print(
                     '[_rcmd_b][' + ':'.join(
                         args) + ']Encontrado un dato desconocido, '
@@ -3073,7 +3082,7 @@ class Room(CHConnection):
     def _rcmd_ok(self, args):
         self._owner = User(args[0])
         self._puid = args[1]  # TODO definir puid y sessionid
-        self._authtype = args[2]  # TODO M=Ok, N= ? C=??
+        self._authtype = args[2]  # TODO M=Ok, N= ? C= Anon
         self._currentname = args[3]
         self._connectiontime = args[4]
         self._correctiontime = int(float(self._connectiontime) - time.time())
@@ -3087,7 +3096,8 @@ class Room(CHConnection):
             pass
         elif self._authtype == 'C':  # Login incorrecto
             self._user = User(
-                    '!' + getAnonName(self._connectiontime, self._puid))
+                '!' + getAnonName(self._puid, self._connectiontime))
+            self._currenname = self._user.name  # TODO join as anon
         elif self._authtype == 'N':
             pass
         if self.mgr:
@@ -3286,7 +3296,7 @@ class Gestor:
     def __repr__(self):
         return "<%s>" % self.__class__.__name__
 
-    def __init__(self, name: str = None, password: str = None, pm: bool = None,
+    def __init__(self, name: str = '', password: str = None, pm: bool = None,
                  accounts = None):
         self._accounts = accounts
         self._colasalas = queue.Queue()
