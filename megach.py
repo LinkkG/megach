@@ -40,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M.1.6.5'
+version = 'M.1.6.5.1'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -261,7 +261,10 @@ def _clean_message(msg: str, pm: bool = False) -> [str, str, str]:
     n = re.search("<n(.*?)/>", msg)
     tag = pm and 'g' or 'f'
     f = re.search("<" + tag + "(.*?)>", msg)
-    msg = re.sub("<" + tag + ".*?>", "", msg)
+    msg = re.sub("<" + tag + ".*?>" + '|"<i s=sm://(.*)"', "", msg)
+
+    wink = '<i s="sm://wink" w="14.52" h="14.52"/>'
+
     if n:
         n = n.group(1)
     if f:
@@ -1163,8 +1166,9 @@ class Message:
         user = User(name, ip=ip, isanon=name[0] in '#!')
         # Detect changes on ip or premium data
         if user.ispremium != ispremium:
-            if user._ispremium != None and ispremium != None:
-                user._ispremium = ispremium
+            evt = user._ispremium != None and ispremium != None
+            user._ispremium = ispremium
+            if evt:
                 room._callEvent("onPremiumChange", user)
             user._info = None
         if ip and ip != user.ip:
