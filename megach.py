@@ -40,7 +40,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M.1.6.4'
+version = 'M.1.6.5'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -950,6 +950,8 @@ class Message:
         self._unid = ""
         self._puid = ""
         self._nameColor = "000"
+        self._banword = None
+        self._flash = None
         self._fontSize = 12
         self._fontFace = "0"
         self._fontColor = "000"
@@ -984,6 +986,10 @@ class Message:
     # Properties
     ####
     @property
+    def banword(self):
+        return self._banword
+
+    @property
     def badge(self):
         """Insignia del mensaje, Ninguna, Mod, Staff son 0 1 o 2"""
         return self._badge
@@ -998,6 +1004,10 @@ class Message:
     @property
     def channel(self):
         return self._channel
+
+    @property
+    def flash(self):
+        return self._flash
 
     @property
     def fontColor(self):
@@ -1112,6 +1122,7 @@ class Message:
             _savelog('[_rcmd_b][' + ':'.join(args) + ']' + unknown2)
         rawmsg = ":".join(args[9:])
         badge = 0
+        ispremium, flash, banword = [None] * 3
         # TODO aplicar los flags
         if channel and channel.isdigit():
             channel = int(channel)
@@ -1119,7 +1130,8 @@ class Message:
             ispremium = channel & 4 > 0
             hasbg = channel & 8 > 0
             flash = channel & 16 > 0  # TODO asignar a user|message
-            if debug and (channel & 35):
+            banword = channel & 32 > 0  # TODO asignar a message
+            if debug and (channel & 3):
                 print(
                     '[_rcmd_b][' + ':'.join(
                         args) + ']Encontrado un dato desconocido, '
@@ -1151,6 +1163,9 @@ class Message:
         user = User(name, ip=ip, isanon=name[0] in '#!')
         # Detect changes on ip or premium data
         if user.ispremium != ispremium:
+            if user._ispremium != None and ispremium != None:
+                user._ispremium = ispremium
+                room._callEvent("onPremiumChange", user)
             user._info = None
         if ip and ip != user.ip:
             user._ip = ip
@@ -1175,7 +1190,9 @@ class Message:
                    time=mtime,
                    unid=unid,
                    unknown2=unknown2,
-                   user=user
+                   user=user,
+                   flash=flash,
+                   banword=banword
                    )
         return self
 
@@ -4056,6 +4073,13 @@ class Gestor:
                 room._connectattempts, error),
                 file = sys.stderr)
 
+    def onPremiumChange(self, room, user):
+        """
+        Al detectar un cambio en el estado premium de un usuario
+        @param room: Sala o  pm donde ocurre 
+        @param user: Usuario que ha recibido o perdido estado premium
+        """
+        pass
 
 class RoomManager(Gestor):
     """
