@@ -14,6 +14,7 @@ import base64
 import builtins
 import hashlib
 import html as html2
+import json
 import mimetypes
 import os
 import queue
@@ -40,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M.1.6.5.1'
+version = 'M.1.6.6'
 version_info = version.split('.')
 debug = True
 ################################################################
@@ -57,7 +58,7 @@ specials = {'mitvcanal': 56, 'animeultimacom': 34, 'cricket365live': 21, 'pokemo
             'sport24lt': 56, 'narutowire': 10, 'watchanimeonn': 22, 'cricvid-hitcric-': 51, 'narutochatt': 70,
             'leeplarp': 27, 'stream2watch3': 56, 'ttvsports': 56, 'ver-anime': 8, 'vipstand': 21, 'eafangames': 56,
             'soccerjumbo': 21, 'myfoxdfw': 67, 'kiiiikiii': 21, 'de-livechat': 5, 'rgsmotrisport': 51,
-            'dbzepisodeorg': 10, 'watch-dragonball': 8, 'peliculas-flv': 69, 'tvanimefreak': 54, 'tvtvanimefreak': 54}
+            'dbzepisodeorg': 10, 'watch-dragonball': 8, 'peliculas-flv': 69}
 tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
              ["17", w12], ["18", w12], ["9", sv2], ["11", sv2], ["12", sv2],
              ["13", sv2], ["14", sv2], ["15", sv2], ["19", sv4], ["23", sv4],
@@ -224,8 +225,7 @@ def getServerNumber(group: str) -> int:
     """
     if group in specials:
         return specials[group]
-    group = group.replace("_", "q")
-    group = group.replace("-", "q")
+    group = group.replace("_", "q").replace("-", "q")
     fnv = float(int(group[0:min(5, len(group))], 36))
     lnv = group[6: (6 + min(3, len(group) - 5))]
     if lnv:
@@ -583,7 +583,7 @@ class WS:
             'Content-Type':   'multipart/form-data; boundary=%s' % boundary,
             'Content-Length': str(len(body))
             }
-        return (body, headers)
+        return body, headers
 
     @staticmethod
     def frameInfo(buffer: bytes) -> FrameInfo:
@@ -713,6 +713,9 @@ class User:
     _INFO = namedtuple('userinfo',
                        ['about', 'gender', 'age', 'country', 'bgtime',
                         'fullprofile'])
+    _STYLE = namedtuple('style',
+                        ['fontFamily', 'fontSize', 'bold', 'stylesOn', 'usebackground',
+                         'italics', 'textColor', 'underline', 'nameColor'])
 
     def __new__(cls, name, **kwargs):
         # TODO obtener fuentes por defecto
@@ -725,18 +728,19 @@ class User:
             return cls._users[key]
         self = super().__new__(cls)
         cls._users[key] = self
-        self._fontColor = '000'
-        self._fontFace = '000'
-        self._fontSize = 12
         self._info = None
+        self._style = None
+        self._fontColor = self.style.textColor or '000'
+        self._fontFace = self.style.fontFamily or '000'
+        self._fontSize = self.style.fontSize or 12
+        self._nameColor = self.style.nameColor or '000'
         self._ip = ''
         self._isanon = not len(name) or name[0] in '!#'
         self._ispremium = None
         self._mbg = False
-        self._msgs = list()  # TODO Mantener historial reciente de un usuario
+        self._history = deque(maxlen=5)  # TODO Mantener historial reciente de un usuario
         self._mrec = False
         self._name = key
-        self._nameColor = '000'
         self._puids = dict()
         self._showname = name
         self._sids = dict()
@@ -783,6 +787,14 @@ class User:
     @property
     def font(self) -> str:
         return '<f x%s%s="%s">' % (self.fontSize, self.fontColor, self.fontFace)
+
+    @property
+    def history(self):
+        return list(self._history)[::-1]
+
+    @history.setter
+    def history(self, value):
+        self._history.appendleft(value)
 
     @property
     def ip(self) -> str:
@@ -889,6 +901,22 @@ class User:
     def premiumtime(self):
         # TODO facilitar uso externo
         return self.info.bgtime or None
+
+    @property
+    def style(self):
+        # TODO comentar
+        if self._style:
+            return self._style
+        try:
+            link = '/%s/%s/' % ('/'.join((self.name * 2)[:2]), self.name)
+            url = 'http://ust.chatango.com/profileimg' + link + 'msgstyles.json'
+            estilo = json.loads(urlreq.urlopen(url).read().decode('latin-1'))
+            self._style = User._STYLE(*list(estilo.values()))
+            return self._style
+        except:
+            return User._STYLE(*([None] * 9))
+
+
 
     sessionids = property(getSessionIds)
 
@@ -1100,7 +1128,7 @@ class Message:
         @param msgid: message id
         @param room: Sala a la que se agregará
         """
-        if self._msgid is None:
+        if self._msgid is not None:
             self._room = room
             self._msgid = msgid
             self._room.msgs.update({msgid: self})
@@ -1166,7 +1194,7 @@ class Message:
         user = User(name, ip=ip, isanon=name[0] in '#!')
         # Detect changes on ip or premium data
         if user.ispremium != ispremium:
-            evt = user._ispremium != None and ispremium != None
+            evt = user._ispremium != None and ispremium != None and mtime > time.time() -5
             user._ispremium = ispremium
             if evt:
                 room._callEvent("onPremiumChange", user)
@@ -1586,12 +1614,11 @@ class CHConnection(WSConnection):
         return self._user
 
     def disconnect(self):
-        """Público, desconección completa"""
+        """Desconección completa de una sala"""
         self._disconnect()
         if not isinstance(self, PM):
-            if self.mgr and self.name in self.mgr.roomnames:
+            if self.mgr and self in self.mgr.rooms:
                 self.mgr.leaveRoom(self)
-                # TODO cambiar este if
             else:
                 self._callEvent('onDisconnect')
         else:
@@ -1711,7 +1738,7 @@ class PM(CHConnection):
         self._contacts = set()
         self._name = 'PM'
         # TODO Si el puerto falla, aumentar en uno hasta cierto límte
-        # self._server = 'i0.chatango.com'  # TODO
+        # self._server = 'i0.chatango.com'  # TODO server i0. para recibir mensajes
         self._status = dict()
         self.mgr = mgr
         self._trackqueue = queue.Queue()
@@ -1908,11 +1935,6 @@ class PM(CHConnection):
         mtime = float(args[3]) - self._correctiontime
         unknown2 = args[4]  # 0 TODO what is this?
         if unknown2 and debug:
-            print(
-                    '[_rcmd_msg][' + ':'.join(
-                            args) + ']Encontrado un dato desconocido, '
-                                    'favor avisar al '
-                                    'desarrollador', file = sys.stderr)
             _savelog('[_rcmd_msg][' + ':'.join(args) + ']')
         rawmsg = ':'.join(args[5:])  # Mensaje
         body, n, f = _clean_message(rawmsg, pm = True)
@@ -1933,9 +1955,10 @@ class PM(CHConnection):
                 user = user
                 )
         self._history.append(msg)
+        user.history = msg
         self._callEvent("onPMMessage", user, msg)
 
-    def _rcmd_msgoff(self, args):  # TODO
+    def _rcmd_msgoff(self, args):  # TODO msgoff a Message.Parse
         name = args[0] or args[1]  # Usuario o tempname
         if not name:
             name = args[2]  # Anon es unknown
@@ -1943,11 +1966,6 @@ class PM(CHConnection):
         mtime = float(args[3]) - self._correctiontime
         unknown2 = args[4]  # 0 TODO what is this?
         if unknown2 and debug:
-            print(
-                    '[_rcmd_msgoff][' + ':'.join(
-                            args) + ']Encontrado un dato desconocido, '
-                                    'favor avisar al '
-                                    'desarrollador', file = sys.stderr)
             _savelog('[_rcmd_msgoff][' + ':'.join(args) + ']')
         rawmsg = ':'.join(args[5:])  # Mensaje
         body, n, f = _clean_message(rawmsg, pm = True)
@@ -1978,7 +1996,10 @@ class PM(CHConnection):
         # TODO completar _status
         # status:linkkg:1531458009.39:online:
         # status:linkkg:1531458452.5:app:
-        pass
+        """
+        Estado de usuarios con charlas recientes
+        """
+        self._status[User.get(args[0])] = [args[1], args[2] in 'onlineapp', args[1]]
 
     def _rcmd_track(self, args):  # TODO completar _track
         # print("track "+str(args))
@@ -2122,7 +2143,7 @@ class Room(CHConnection):
     @property
     def anonnames(self):
         """Nombres de los anons detectados"""
-        return [x.name for x in self.anonlist]
+        return [x.showname for x in self.anonlist]
 
     @property
     def allusernames(self):
@@ -3235,6 +3256,7 @@ class Room(CHConnection):
                 self.owner] + list(self.mods):  # TODO reducir
                 self._mods[msg.user] = self._parseFlags('0', ModFlags)
                 self._mods[msg.user].isadmin = False
+            msg.user.history = msg
             self._callEvent("onMessage", msg.user, msg)
 
     def _rcmd_ubw(self, args):  # TODO palabas desbaneadas ?)
@@ -3339,8 +3361,6 @@ class Gestor:
         self.bgmode = False
         self._pm = pm
 
-
-
     ####
     # Propiedades
     ####
@@ -3404,7 +3424,6 @@ class Gestor:
             accounts = [(name, password)]
         self = cls(name, password, pm, accounts)
         for room in rooms:
-
             self.joinRoom(room)
 
         self.main()
