@@ -41,9 +41,10 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M.1.6.6'
+version = 'M.1.7.0'
 version_info = version.split('.')
 debug = True
+autoupdate = True
 ################################################################
 # Cosas del servidor, las cuentas y el manejo de mods
 ################################################################
@@ -54,6 +55,7 @@ sv6 = 104
 sv8 = 101
 sv10 = 110
 sv12 = 116
+updated = 1556469390  # 2019-04-28 10:36 AM
 specials = {'mitvcanal': 56, 'animeultimacom': 34, 'cricket365live': 21, 'pokemonepisodeorg': 22, 'animelinkz': 20,
             'sport24lt': 56, 'narutowire': 10, 'watchanimeonn': 22, 'cricvid-hitcric-': 51, 'narutochatt': 70,
             'leeplarp': 27, 'stream2watch3': 56, 'ttvsports': 56, 'ver-anime': 8, 'vipstand': 21, 'eafangames': 56,
@@ -74,6 +76,39 @@ tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
              ["73", sv12], ["74", sv12], ["75", sv12], ["76", sv12],
              ["77", sv12], ["78", sv12], ["79", sv12], ["80", sv12],
              ["81", sv12], ["82", sv12], ["83", sv12], ["84", sv12]]
+
+try:
+    # File exists
+    if not os.path.exists('megach.json'):
+        tmp = open("megach.json", "a")
+        tmp.write(json.dumps({'tsweights': tsweights, 'specials': specials}))
+        tmp.close()
+    # Open & load
+    with open('megach.json') as file:
+        dic = json.load(file)
+    if 'tsweights' not in dic:
+        dic['tsweights'] = tsweights
+        dic['updated'] = updated
+    else:
+        # TODO analizar specials
+        # specials=dic.get('specials') or specials
+        updated = dic.get('updated') or updated
+        tsweights = dic.get('tsweights') or tsweights
+    print(updated)
+    # Update every two weeks
+    if updated < time.time() - 1209600 and autoupdate:
+        import update_servers
+
+        dic.update(update_servers.Updater().servers)
+        dic.update({'updated': time.time()})
+        with open('megach.json', 'w') as file:
+            file.write(json.dumps(dic))
+except ModuleNotFoundError as e1:
+    print("External module not found, please search for update_servers.py", file=sys.stderr)
+except Exception as e:
+    print('' + str(e))
+
+print(updated)
 _maxServernum = sum(x[1] for x in tsweights)
 
 GroupFlags = {
