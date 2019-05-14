@@ -1,8 +1,14 @@
-import re
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+File: update_servers.py
+Title: servers updater for megach
+Original Author: milton797 http://milton797.chatango.com
+"""
 import json
-import time
-import zlib
+import re
 import urllib.request as urlreq
+import zlib
 
 
 class Updater:
