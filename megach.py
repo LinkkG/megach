@@ -1904,7 +1904,7 @@ class PM(CHConnection):
     def checkOnline(self, user):
         if isinstance(user, User):
             user = User.name  # TODO el track necesita esto?
-        return self.pm.track(user)[-1]
+        return self.track(user)[-1]
 
     def message(self, user, msg, html: bool = False):
         """
