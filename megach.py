@@ -181,7 +181,7 @@ builtins.print = printLock
 
 def _savelog(message):
     try:
-        with open('megach.log', 'a') as f:
+        with open(os.path.join(path, 'megach.log'), 'a') as f:
             f.writelines(str(message) + '\n')
     except Exception as e:
         print('Error al guardar log: ' + str(e), file = sys.stderr)
@@ -1248,8 +1248,7 @@ class Message:
             user._info = None
         if ip and ip != user.ip:
             user._ip = ip
-        if f:  # TODO eliminar este else
-            fontSize, fontColor, fontFace = _parseFont(f.strip())
+        fontSize, fontColor, fontFace = _parseFont(f.strip())
         self = cls(badge=badge,
                    body=body,
                    channel=channel,
