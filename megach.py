@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuración
 ################################################################
-version = 'M.1.7.1'
+version = 'M.1.7.2'
 version_info = version.split('.')
 debug = True
 autoupdate = True
@@ -86,10 +86,6 @@ def updatePath():
     sys.path.append(fileDir)  # for imports
     return fileDir
 
-
-path = updatePath()
-
-
 def updateServers():
     route = os.path.join(path, 'megach.json')
     global updated
@@ -123,8 +119,10 @@ def updateServers():
     return updated
 
 
+path = updatePath()
 updated = updateServers()
 _maxServernum = sum(x[1] for x in tsweights)
+
 GroupFlags = {
     "LIST_TAXONOMY":      1, "NOANONS": 4, "NOFLAGGING": 8, "NOCOUNTER": 16,
     "NOIMAGES":           32, "NOLINKS": 64, "NOVIDEOS": 128,
@@ -3308,6 +3306,8 @@ class Room(CHConnection):
         pass
 
     # TODO _rcmd_proxybanned
+    # TODO _rcmd_ratelimit
+
     def _rcmd_unblocked(self, args):
         """Se ha quitado el ban a un usuario"""
         unid = args[0]
@@ -3394,7 +3394,7 @@ class Gestor:
         self._name = self._accounts[0][0]
         self._password = self._accounts[0][1]
         self._rooms = dict()
-        self._running = False
+        self._running = None
         self._user = User(self._name)
         self._tasks = set()
         self._pm = None
@@ -3556,8 +3556,11 @@ class Gestor:
                     time.strftime('%I:%M:%S %p')
                 ))
                 time.sleep(10)
-        self.onInit()
+                self.onConnectionAttempt(self._pm, malInicio)
 
+        self.onInit()
+        if self._running == False:
+            return
         self._running = True
         self._jt = threading.Thread(target = self._joinThread,
                                     name = "Join rooms")
