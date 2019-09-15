@@ -3552,11 +3552,10 @@ class Gestor:
                 self._pm = PM(mgr=self, name=self.name,
                               password=self.password)
             except socket.gaierror as malInicio:  # En caso de que no haya internet
-                print("[{0}] No hay internet, Reintentando primera conexión en 10... ".format(
+                print("[{0}] No hay internet, Reintentando conexión en 10... ".format(
                     time.strftime('%I:%M:%S %p')
                 ))
                 time.sleep(10)
-                self.onConnectionAttempt(self._pm, malInicio)
 
         self.onInit()
         if self._running == False:
