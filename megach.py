@@ -42,7 +42,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuration
 ################################################################
-version = 'M.1.8.1'
+version = 'M.1.8.2'
 version_info = version.split('.')
 debug = False
 autoupdate = True       # for special servers and tsweights
@@ -3589,7 +3589,7 @@ class Gestor:
         """
         Poner en marcha al bot
         """
-        self.onInit()
+        
         while self._pm == True:
             try:
                 self._pm = PM(mgr=self, name=self.name,
@@ -3603,7 +3603,7 @@ class Gestor:
         if self._running == False:
             return
         self._running = True
-
+        self.onInit()
         while len(self._threads)<Gestor.TREAD_LIMIT:
             new_thread=threading.Thread(target = self._stand_by,
                                     name = "Thread_"+str(len(self._threads)+1))
