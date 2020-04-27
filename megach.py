@@ -42,7 +42,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuration
 ################################################################
-version = 'M.1.8.2'
+version = 'M.1.8.2b'
 version_info = version.split('.')
 debug = False
 autoupdate = True       # for special servers and tsweights
@@ -1392,7 +1392,7 @@ class WSConnection:
         #time.sleep(0.01)
         #print("ALIMENTANDO")
         try:
-            with self._tlock:
+            with self._connlock:
                 rd, wr, sp = select.select((self._sock and [self._sock] or []),
                                        (self._wbuf and [self._sock] or []),
                                        [],
@@ -1458,7 +1458,7 @@ class WSConnection:
         @type args: [str, str, ...]
         @param args: command and list of arguments
         """
-        with self._connlock:
+        with self._tlock:
             if self._firstCommand:
                 terminator = self._terminator[0]
                 self._firstCommand = False
@@ -3400,7 +3400,7 @@ class Gestor:
     _TimerResolution = 0.2
     maxHistoryLength = 700
     PMHost = "c1.chatango.com"
-    TREAD_LIMIT=5
+    TREAD_LIMIT=10
 
     def __dir__(self):
         return [x for x in
@@ -3551,18 +3551,21 @@ class Gestor:
         else:
             return False
 
-    def _join_room_task(self):
-        with self.connlock:
-            if self._colasalas.qsize()<1:
-                return
-            room, account = self._colasalas.get()
-            try:
-                #print("CONECTANDO A SALA")
-                con = Room(room, self, account)
-                self._rooms[room] = con
-            except TimeoutError as fallo:
-                print("[{0}][{1}] El servidor de la sala no responde".format(
-                    time.strftime('%I:%M:%S %p'), room), file=sys.stderr)
+    def _join_room_task(self,room,account):
+        #with self.connlock:
+        #if self._colasalas.qsize()<1:
+        #    return
+        #room, account = self._colasalas.get()
+        try:
+            print("conectando "+room)
+            con = Room(room, self, account)
+            self._rooms[room] = con
+            #print("CONECTANDO A SALA")
+            #con = Room(room, self, account)
+            #self._rooms[room] = con
+        except TimeoutError as fallo:
+            print("[{0}][{1}] El servidor de la sala no responde".format(
+                time.strftime('%I:%M:%S %p'), room), file=sys.stderr)
 
     async def _joinThread(self):
         while True:
@@ -3571,12 +3574,13 @@ class Gestor:
                 continue
             room, account = self._colasalas.get()
             try:
-                con = Room(room, self, account)
-                self._rooms[room] = con
+                self._add_order(self._join_room_task,room,account)
+                
             except TimeoutError as fallo:
                 print("[{0}][{1}] El servidor de la sala no responde".format(
                     time.strftime('%I:%M:%S %p'), room), file=sys.stderr)
                 # TODO usar evento de sala cuando el server no responde
+
 
     def leaveRoom(self, room):
         if isinstance(room, Room):
@@ -3589,7 +3593,6 @@ class Gestor:
         """
         Poner en marcha al bot
         """
-        
         while self._pm == True:
             try:
                 self._pm = PM(mgr=self, name=self.name,
@@ -3603,6 +3606,7 @@ class Gestor:
         if self._running == False:
             return
         self._running = True
+
         self.onInit()
         while len(self._threads)<Gestor.TREAD_LIMIT:
             new_thread=threading.Thread(target = self._stand_by,
