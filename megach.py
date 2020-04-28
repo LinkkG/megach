@@ -42,7 +42,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuration
 ################################################################
-version = 'M.1.8.2b'
+version = 'M.1.9.1'
 version_info = version.split('.')
 debug = False
 autoupdate = True       # for special servers and tsweights
@@ -107,9 +107,9 @@ def updateServers():
         updated = dic.get('updated') or updated
         tsweights.clear()
         tsweights.extend(dic.get('tsweights'))
-    # Update every two weeks
+    # Update every month
     try:
-        if updated < time.time() - 1209600 and autoupdate:
+        if updated < time.time() - 2409600 and autoupdate:
             import update_servers
             dic.update(update_servers.Updater().servers)
             dic.update({'updated': time.time()})
@@ -379,9 +379,7 @@ def _fontFormat(text):
     for f in formats:
         f1, f2 = set(formats.keys()) - {f}
         # find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[\S]){2}'.format(f1, f2, f+'{1}')
-        find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[\S]?[{2}]?){2}[{0}{1}]?[' \
-               '\s]'.format(
-                f1, f2, f)
+        find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[\S]?[{2}]?){2}[{0}{1}]?[\s]'.format(f1, f2, f)
         for x in re.findall(find, ' ' + text + ' '):
             original = f[-1] + x + f[-1]
             cambio = '<' + formats[f] + '>' + x + '</' + formats[f] + '>'
@@ -1308,11 +1306,12 @@ class WSConnection:
         self._wlockbuf = b''  # Cuando no se manda al wbuf, viene acá
         self._tlock = threading.Lock()  # Para controlar esta conexion
         # TODO usar en comandos que retornan datos
-        self._connlock = threading.Lock()
         self._terminator = ['\x00', '\r\n\x00']
         self._pingdata = ''
         self._fedder = None
         self._pingTask = None
+        self._reader=None
+        self._writer=None
 
     def __del__(self):
         self._disconnect()
@@ -1320,8 +1319,12 @@ class WSConnection:
     def _callEvent(self, evt, *args, **kw):
         try:
             if self.mgr and hasattr(self.mgr, evt):
-                getattr(self.mgr, evt)(self, *args, **kw)
-                self.mgr.onEventCalled(self, evt, *args, **kw)
+                #print("Llamando "+evt)
+                #print(getattr(self.mgr, evt))
+                self.mgr._add_order(getattr(self.mgr, evt),self,*args,**kw)
+                self.mgr._add_order(self.mgr.onEventCalled,self,evt,*args,**kw)
+                #getattr(self.mgr, evt)(self, *args, **kw)
+                #self.mgr.onEventCalled(self, evt, *args, **kw)
             elif self.mgr:
                 print('Evento no controlado ' + str(evt))
         except Exception as e:
@@ -1347,26 +1350,10 @@ class WSConnection:
 
     def connect(self) -> bool:
         """ Iniciar la conexión con el servidor y llamar a _handshake() """
-        #with self._tlock:
         if not self._connected:
-
             self._connectattempts += 1
-            self._sock = socket.socket()
-            #        print(self._server)
-            #        print(self._port)
-            # TODO Comprobar, si no hay internet hay error acá
-            self._sock.connect((self._server, self._port))
-            self._sock.setblocking(False)
             self._handShake()
             self._pingTask = Task(90, self._ping, True)
-            self._connected = True
-            #        if not self._fedder:
-            #            self._fedder = threading.Thread(
-            #                target=self._feed,
-            #                name=self._name or 'WSConnection',
-            #                    )
-            #            self._fedder.daemon = True
-            #            self._fedder.start()
             return True
         return False
 
@@ -1383,74 +1370,61 @@ class WSConnection:
                          "Sec-WebSocket-Key: {}\r\n"
                          "Sec-WebSocket-Version: {}\r\n"
                          "\r\n").format(self._server, self._port, self._origin,
-                                        WS.genseckey(), WS.VERSION).encode()
+                                        WS.genseckey(), WS.VERSION).encode('latin-1')
         self._setWriteLock(True)
         self._wbuf = self._headers
 
-    async def _feed(self):
-        #while self._connected:
-        #time.sleep(0.01)
-        #print("ALIMENTANDO")
-        try:
-            with self._connlock:
-                rd, wr, sp = select.select((self._sock and [self._sock] or []),
-                                       (self._wbuf and [self._sock] or []),
-                                       [],
-                                       0.2)
-                for x in wr:
-                    try:
-                        size = self._sock.send(self._wbuf)
-                        #print(self,end="")
-                        #print(" ENVIADO ",end="")
-                        #print(self._wbuf[:size])
-                        self._wbuf = self._wbuf[size:]
-                    except Exception as e:
-                        if debug:
-                            print("Error sock.send " + str(e), sys.stderr)
-                for x in rd:
+    async def _connectasync(self):
+        #print(self._server,self._port)
+        self._reader, self._writer = await asyncio.open_connection(self._server, self._port)
+        self._connected=True
+        asyncio.run_coroutine_threadsafe(self._write_connection_data(),self.mgr._loop)
+        asyncio.run_coroutine_threadsafe(self._read_connection_data(), self.mgr._loop)
 
-                    chunk = None
-                    
-                    #with self._tlock:
-                    if self._sock:
-                        chunk = self._sock.recv(1024)
+    async def _feed_connection(self):
+        while self._connected:
+            if self._wbuf:
+                self._writer.write(self._wbuf)
+                self._wbuf=b""
+            data = await self._reader.read(500)
+            if data:
+                await self.onData(data)
 
-                    if chunk:
-                        #print("RECIBIDO ",end="")
-                        #print(chunk)
-                        await asyncio.create_task(self.onData(chunk))
-                        # TODO calificar comandos de respuesta instantanea
-                        # TODO separar esos _rcmd_ y usar un único thread para ellos
-                        # threading.Thread(target=self.onData, name="Process", args=(chunk,)).start()
-                    elif chunk is not None:
-                        # Conexión perdida
-                        with WSConnection._SAFELOCK:
-                            if not self._serverheaders:  # Nunca se recibió
-                                # comandos de la conexión
-                                self.disconnect()
-                            else:
-                                self.reconnect()
-                                # TODO este reconnect puede bloquearse
-                                # ConnectionRefusedError
-        except socket.error as cre:  # socket.error -
-            # ConnectionResetError
-            # TODO controlar tipo de error
-            with WSConnection._WSLOCK:
-                self.test = cre  # variable de depuración para
-                # android
-                self._callEvent("onConnectionLost", cre)
-                attempts = 1  # Intentos de
-                self._connectattempts = 0
-                while attempts:
-                    try:
-                        self.reconnect()
-                        attempts = 0
-                        # TODO asegurar el reinicio del contador
-                    except Exception as sgai:  # socket.gaierror:  #
-                        # En caso de que no haya internet
-                        self._callEvent('onConnectionAttempt', sgai)
-                        attempts += 1
-                        time.sleep(10)
+    async def _write_connection_data(self):
+        while self._connected:
+            if self._wbuf:
+                self._writer.write(self._wbuf)
+                self._wbuf=b""
+            await asyncio.sleep(0.01)
+
+    async def _read_connection_data(self):
+        while self._connected:
+            try:
+                data= await self._reader.read(1024)
+                if data:
+                    await self.onData(data)
+            except socket.error as cre:  # socket.error -
+                # ConnectionResetError
+                # TODO controlar tipo de error
+                with WSConnection._WSLOCK:
+                    self.test = cre  # variable de depuración para
+                    # android
+                    self._callEvent("onConnectionLost", cre)
+                    attempts = 1  # Intentos de
+                    self._connectattempts = 0
+                    while attempts:
+                        try:
+                            self.reconnect()
+                            attempts = 0
+                            # TODO asegurar el reinicio del contador
+                        except Exception as sgai:  # socket.gaierror:  #
+                            # En caso de que no haya internet
+                            self._callEvent('onConnectionAttempt', sgai)
+                            attempts += 1
+                            time.sleep(10)
+            except asyncio.IncompleteReadError:
+                print("Error de lectura incompleta :v")
+            #await asyncio.sleep(0.01)
 
     def _sendCommand(self, *args):
         """
@@ -1480,16 +1454,15 @@ class WSConnection:
         @param data: Un string
         @return: None
         """
-        #print("EON PROCESS "+data)
         data = data.rstrip("\r\n\x00")
+        self.mgr._add_order(self._callEvent,"onRaw",data)
         self._callEvent("onRaw", data)
         data = data.split(":")
         cmd, args = data[0], data[1:]
         func = "_rcmd_" + cmd
         if hasattr(self, func):
             try:
-                #await getattr(self, func)(args)
-                self.mgr._add_order(getattr(self, func),(args))
+                self.mgr._add_order(getattr(self, func),args)
             except Exception as e:
                 self._callEvent('onProcessError', func, e)
                 print('[%s][%s] ERROR ON PROCESS "%s" "%s"' % (
@@ -1542,7 +1515,6 @@ class WSConnection:
         Al recibir datos del servidor
         @param data: Los datos recibidos y sin procesar
         """
-        
         self._rbuf += data  # Agregar los datos al buffer de lectura
         if not self._serverheaders and b'\r\n' * 2 in data:
             self._serverheaders, self._rbuf = self._rbuf.split(b'\r\n' * 2, 1)
@@ -1569,7 +1541,7 @@ class WSConnection:
                     self._disconnect()  # TODO reconectar
                 elif info.opcode == WS.TEXT:
                     # El frame contiene datos
-                    await asyncio.create_task(self._process(payload))
+                    asyncio.run_coroutine_threadsafe(self._process(payload),self.mgr._loop)
                 elif debug:
                     print('Frame no controlado: "{}"'.format(payload),
                           file = sys.stderr)
@@ -1595,7 +1567,6 @@ class WSConnection:
         self._wlockbuf = b''  # Buffer de escritura bloqueada
         self._firstCommand = False
         self._tlock = threading.Lock()
-        self._connlock = threading.Lock()
         self._mods = dict()
 
 
@@ -1648,6 +1619,7 @@ class CHConnection(WSConnection):
     def connect(self):
         super().connect()
         self._login()
+        asyncio.run_coroutine_threadsafe(self._connectasync(),self.mgr._loop)
 
     @property
     def account(self) -> str:
@@ -1857,8 +1829,6 @@ class PM(CHConnection):
     def _login(self):
         # TODO el 2 es la versión del cliente
         r2 = ["tlogin", self._getAuth(self.mgr.name, self.mgr.password), "2"]
-        #print(r2[1])
-        #exit()
         if not r2[1]:
             self._callEvent("onLoginFail")
             self.disconnect()
@@ -3398,9 +3368,9 @@ class Gestor:
     Clase Base para manejar las demás conexiones
     """
     _TimerResolution = 0.2
-    maxHistoryLength = 700
+    maxHistoryLength = 500
     PMHost = "c1.chatango.com"
-    TREAD_LIMIT=10
+    TREAD_LIMIT=4
 
     def __dir__(self):
         return [x for x in
@@ -3414,10 +3384,8 @@ class Gestor:
                  accounts = None):
         self._accounts = accounts
         self._colasalas = queue.Queue()
-        self.connlock = threading.Lock()
         if accounts is None:
             self._accounts = [(name, password)]
-        self._jt = None  # Join Thread
         self._name = self._accounts[0][0]
         self._password = self._accounts[0][1]
         self._rooms = dict()
@@ -3432,6 +3400,7 @@ class Gestor:
         self._pm = pm
         self._threads=set()
         self._taskqueue=queue.Queue()
+        self._loop=asyncio.new_event_loop()
 
 
     ####
@@ -3552,29 +3521,22 @@ class Gestor:
             return False
 
     def _join_room_task(self,room,account):
-        #with self.connlock:
-        #if self._colasalas.qsize()<1:
-        #    return
-        #room, account = self._colasalas.get()
         try:
-            print("conectando "+room)
             con = Room(room, self, account)
             self._rooms[room] = con
-            #print("CONECTANDO A SALA")
-            #con = Room(room, self, account)
-            #self._rooms[room] = con
         except TimeoutError as fallo:
             print("[{0}][{1}] El servidor de la sala no responde".format(
                 time.strftime('%I:%M:%S %p'), room), file=sys.stderr)
 
     async def _joinThread(self):
         while True:
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.01)
             if self._colasalas.qsize()<1:
                 continue
             room, account = self._colasalas.get()
             try:
-                self._add_order(self._join_room_task,room,account)
+                con = Room(room, self, account)
+                self._rooms[room] = con
                 
             except TimeoutError as fallo:
                 print("[{0}][{1}] El servidor de la sala no responde".format(
@@ -3593,6 +3555,21 @@ class Gestor:
         """
         Poner en marcha al bot
         """
+        if self._running == False:
+            return
+        self._running = True
+
+        while len(self._threads)<Gestor.TREAD_LIMIT:
+            new_thread=threading.Thread(target = self._stand_by,
+                                    name = "Thread_"+str(len(self._threads)+1))
+            new_thread.daemon=True
+            new_thread.start()
+            self._threads.add(new_thread)
+        asyncio.run_coroutine_threadsafe(self._joinThread(), self._loop)
+        t=threading.Thread(target=self._start_loop)
+        t.daemon=True
+        t.start()
+
         while self._pm == True:
             try:
                 self._pm = PM(mgr=self, name=self.name,
@@ -3602,39 +3579,11 @@ class Gestor:
                     time.strftime('%I:%M:%S %p')
                 ))
                 time.sleep(10)
-        
-        if self._running == False:
-            return
-        self._running = True
 
         self.onInit()
-        while len(self._threads)<Gestor.TREAD_LIMIT:
-            new_thread=threading.Thread(target = self._stand_by,
-                                    name = "Thread_"+str(len(self._threads)+1))
-            new_thread.daemon=True
-            new_thread.start()
-            self._threads.add(new_thread)
-
-        #self._jt = threading.Thread(target = self._joinThread,
-        #                            name = "Join rooms")
-        #self._jt.daemon = True
-        #self._jt.start()
-        # TODO replace with loop.runforever
-        self._loop=asyncio.new_event_loop()
-        asyncio.run_coroutine_threadsafe(self._joinThread(), self._loop)
-        asyncio.run_coroutine_threadsafe(self._read_connection_data(), self._loop)
-        #self._loop.call_soon_threadsafe(self._joinThread)
-        #self._loop.call_soon_threadsafe(self._read_connection_data)
-        t=threading.Thread(target=self._start_loop,args=(self._loop,))
-        t.daemon=True
-        t.start()
         while self._running:
-
-            #self._add_order(self._join_room_task)
-            #self._add_order(self._read_connection_data)
-            #self._add_order(self._process_connection_data)
-            #self._add_order(self._write_connection_data)
-            time.sleep(0.2)
+            # TODO opcional para multiples Networks
+            pass
 
         # Finish
         # Cerrar conexiones
@@ -3646,50 +3595,16 @@ class Gestor:
         for x in self._threads:
             x.stop()
 
-    def _start_loop(self,loop):
-        asyncio.set_event_loop(loop)
-        loop.run_forever()
-
-    async def _read_connection_data(self):
-        
-        #print("LEYENDO CONEXIONES")
-        #print(conns)
-        try:
-            while True:
-                await asyncio.sleep(0.1)
-                conns=self.getConnections()
-                for con in conns:
-                    #self._add_order(con._feed)
-                    #self._loop.call_soon(con._feed())
-                    await asyncio.create_task(con._feed())
-
-                    #asyncio.run_coroutine_threadsafe(con._feed(), self._loop)
-                    #asyncio.run_coroutine_threadsafe(con._feed(), self._loop)
-        except socket.error as cre:  # socket.error -
-            # ConnectionResetError
-            # TODO controlar tipo de error
-            with WSConnection._WSLOCK:
-                self.test = cre  # variable de depuración para
-                # android
-                self._callEvent("onConnectionLost", cre)
-                attempts = 1  # Intentos de
-                self._connectattempts = 0
-                while attempts:
-                    try:
-                        x.reconnect()
-                        attempts = 0
-                        # TODO asegurar el reinicio del contador
-                    except Exception as sgai:  # socket.gaierror:  #
-                        # En caso de que no haya internet
-                        self._callEvent('onConnectionAttempt', sgai)
-                        attempts += 1
-                        time.sleep(10)
+    def _start_loop(self):
+        self._loop.run_forever()
 
     def _stand_by(self):
         while self._running:
-            #print("BUSCANDO FUNCION")
             func, args, kwargs = self._taskqueue.get()
-            func(*args,**kwargs)
+            try:
+                func(*args,**kwargs)
+            except Exception as e:
+                print("Not managed exeption "+str(e))
             time.sleep(0.01)
 
     def _add_order(self,func,*args,**kw):
