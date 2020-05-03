@@ -42,7 +42,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuration
 ################################################################
-version = 'M.1.9.1'
+version = 'M.1.9.2'
 version_info = version.split('.')
 debug = False
 autoupdate = True       # for special servers and tsweights
@@ -1381,15 +1381,6 @@ class WSConnection:
         asyncio.run_coroutine_threadsafe(self._write_connection_data(),self.mgr._loop)
         asyncio.run_coroutine_threadsafe(self._read_connection_data(), self.mgr._loop)
 
-    async def _feed_connection(self):
-        while self._connected:
-            if self._wbuf:
-                self._writer.write(self._wbuf)
-                self._wbuf=b""
-            data = await self._reader.read(500)
-            if data:
-                await self.onData(data)
-
     async def _write_connection_data(self):
         while self._connected:
             if self._wbuf:
@@ -1402,7 +1393,9 @@ class WSConnection:
             try:
                 data= await self._reader.read(1024)
                 if data:
-                    await self.onData(data)
+                    self.mgr._add_order(self.onData,data)
+                    #asyncio.run_coroutine_threadsafe(self.onData(data),self.mgr._loop)
+                    #await self.onData(data)
             except socket.error as cre:  # socket.error -
                 # ConnectionResetError
                 # TODO controlar tipo de error
@@ -1510,7 +1503,7 @@ class WSConnection:
         """Buffer de escritura"""
         return self._wbuf
 
-    async def onData(self, data: bytes):
+    def onData(self, data: bytes):
         """
         Al recibir datos del servidor
         @param data: Los datos recibidos y sin procesar
@@ -3370,7 +3363,7 @@ class Gestor:
     _TimerResolution = 0.2
     maxHistoryLength = 500
     PMHost = "c1.chatango.com"
-    TREAD_LIMIT=4
+    TREAD_LIMIT=20
 
     def __dir__(self):
         return [x for x in
@@ -3535,8 +3528,11 @@ class Gestor:
                 continue
             room, account = self._colasalas.get()
             try:
-                con = Room(room, self, account)
-                self._rooms[room] = con
+                print(time.strftime('%I:%M:%S %p')+" conectando... "+room)
+                self._add_order(self._join_room_task,room,account)
+                #self._join_room_task(self,room,account)
+                #con = Room(room, self, account)
+                #self._rooms[room] = con
                 
             except TimeoutError as fallo:
                 print("[{0}][{1}] El servidor de la sala no responde".format(
@@ -3583,6 +3579,7 @@ class Gestor:
         self.onInit()
         while self._running:
             # TODO opcional para multiples Networks
+            time.sleep(0.01)
             pass
 
         # Finish
