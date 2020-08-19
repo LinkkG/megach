@@ -10,7 +10,6 @@ Current Maintainers and Contributors:
 ################################################################
 # Imports
 ################################################################
-import asyncio
 import base64
 import builtins
 import hashlib
@@ -40,16 +39,16 @@ if sys.version_info[1] < 5:
     html2.unescape = HTMLParser().unescape
 
 ################################################################
-# Depuration
+# Depuración
 ################################################################
-version = 'M.1.8.1'
+version = 'M.1.7.2'
 version_info = version.split('.')
-debug = False
-autoupdate = True       # for special servers and tsweights
-path = ''               # get and save megach file path
-updated = 1556469390    # 2019-04-28 10:36 AM
+debug = True
+autoupdate = True
+path = ''
+updated = 1556469390  # 2019-04-28 10:36 AM
 ################################################################
-# Server variables
+# Cosas del servidor, las cuentas y el manejo de mods
 ################################################################
 w12 = 75
 sv2 = 95
@@ -82,14 +81,12 @@ tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
 
 
 def updatePath():
-    """Get this module's directory and appends to path"""
     absFilePath = os.path.abspath(__file__)  # Absolute Path of this module
     fileDir = os.path.dirname(absFilePath)  # Directory of this Module
     sys.path.append(fileDir)  # for imports
     return fileDir
 
 def updateServers():
-    """Updates chatango servers variable from json file or web"""
     route = os.path.join(path, 'megach.json')
     global updated
     if not os.path.exists(route):
@@ -126,15 +123,11 @@ path = updatePath()
 updated = updateServers()
 _maxServernum = sum(x[1] for x in tsweights)
 
-################################################################
-# Mod, Group and other Flags
-################################################################
-# TODO missing group flag 4096. What is it?
 GroupFlags = {
     "LIST_TAXONOMY":      1, "NOANONS": 4, "NOFLAGGING": 8, "NOCOUNTER": 16,
     "NOIMAGES":           32, "NOLINKS": 64, "NOVIDEOS": 128,
     "NOSTYLEDTEXT":       256, "NOLINKSCHATANGO": 512,
-    "NOBRDCASTMSGWITHBW": 1024, "RATELIMITREGIMEON": 2048, "UNKNOWN": 4096,
+    "NOBRDCASTMSGWITHBW": 1024, "RATELIMITREGIMEON": 2048,
     "CHANNELSDISABLED":   8192, "NLP_SINGLEMSG": 16384,
     "NLP_MSGQUEUE":       32768, "BROADCAST_MODE": 65536,
     "CLOSED_IF_NO_MODS":  131072, "IS_CLOSED": 262144,
@@ -155,6 +148,10 @@ ModFlags = {
 AdminFlags = (ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] |
               ModFlags["EDIT_GROUP"] | ModFlags["EDIT_GP_ANNC"])
 
+Fonts = {
+    'arial':    0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4,
+    'palatino': 5, 'papirus': 6, 'times': 7, 'typewriter': 8
+    }
 
 MessageFlags = {
     'IS_PREMIUM':  4, 'HAS_BG': 8, 'BADGE_SHIELD': 64, 'BADGE_STAFF': 128,
@@ -162,17 +159,12 @@ MessageFlags = {
     }
 
 Channels = {
-    "red": 256, "blue": 2048, "mod": 32768
-    }
+    "white": 0, "red": 256, "blue": 2048, "mod": 32768
+    }  # TODO darle uso
 
 Badges = {
     "shield": 64, "staff": 128
-    }
-
-Fonts = {
-    'arial':    0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4,
-    'palatino': 5, 'papirus': 6, 'times': 7, 'typewriter': 8
-    }
+    }  # TODO darle uso
 
 ModChannels = Badges['shield'] | Badges['staff'] | Channels['mod']
 
@@ -180,15 +172,12 @@ PRINTLOCK = threading.Lock()
 tprint = builtins.print
 
 def printLock(*args, **kwargs):
-    """Prints text in single thread to prevent collitions"""
     with PRINTLOCK:
         return tprint(*args, **kwargs)
 
 builtins.print = printLock
 
-# TODO check and delete
 def _savelog(message):
-    """Saves message into Log file"""
     try:
         with open(os.path.join(path, 'megach.log'), 'a') as f:
             f.writelines(str(message) + '\n')
@@ -208,7 +197,7 @@ def _getAnonId(puid: str, ts: str) -> str:
     Obtener una id de anon.
     @param puid: PUID del usuario de 4 cifras.
     @param ts: Tiempo de sesión en que se conectó el anon debe ser un string
-    con un entero de 4 dígitos
+    con un entero
     @return: Número con la id de anon
     """
     if not ts or len(ts) < 4:
@@ -225,6 +214,7 @@ def _getAnonId(puid: str, ts: str) -> str:
         __reg1 += 1
     return __reg5
 
+
 def convertPM(msg: str) -> str:
     """
     Convertir las fuentes de un mensaje normal en fuentes para el PM
@@ -232,6 +222,7 @@ def convertPM(msg: str) -> str:
     @param msg: Mensaje con fuentes incrustadas
     @return: Mensaje con etiquetas f convertidas a g
     """
+
     pattern = re.compile(
             r'<f x(\d{1,2})?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})=(.*?)>')
 
@@ -374,7 +365,6 @@ def _parseNameColor(n: str) -> str:
 
 
 def _fontFormat(text):
-    """Converts */_ into whattsap like formats"""
     formats = {'/': 'I', '\*': 'B', '_': 'U'}
     for f in formats:
         f1, f2 = set(formats.keys()) - {f}
@@ -390,7 +380,6 @@ def _fontFormat(text):
 
 
 def _videoImagePMFormat(text):
-    """Returns text with formatted video and image for PM sending"""
     for x in re.findall('(http[s]?://[^\s]+outube.com/watch\?v=([^\s]+))', text):
         original = x[0]
         cambio = '<i s="vid://yt:%s" w="126" h="96"/>' % x[1]
@@ -401,6 +390,7 @@ def _videoImagePMFormat(text):
         text = text.replace(original, cambio)
     for x in re.findall("http[s]?://[\S]+?.jpg", text):
         text = text.replace(x, '<i s="%s" w="70.45" h="125"/>' % x)
+    # print(text)
     return text
 
 
@@ -439,7 +429,6 @@ class Task:
 
     @staticmethod
     def _tick():
-        """Check all Tasks to do their functions"""
         now = time.time()
         for task in list(Task._INSTANCES):
             try:
@@ -785,13 +774,11 @@ class User:
         self = super().__new__(cls)
         cls._users[key] = self
         self._info = None
-        ## Estilos del usuario
         self._style = None
         self._fontColor = self.style.textColor or '000'
         self._fontFace = self.style.fontFamily or '000'
         self._fontSize = self.style.fontSize or 12
         self._nameColor = self.style.nameColor or '000'
-        # IP, Premium
         self._ip = ''
         self._isanon = not len(name) or name[0] in '!#'
         self._ispremium = None
@@ -806,6 +793,7 @@ class User:
             # if val is None:
             #    continue
             setattr(self, '_' + attr, val)
+        # TODO Más cosas del user
         return self
 
     def __dir__(self):
@@ -1297,7 +1285,7 @@ class WSConnection:
         self._firstCommand = True  # Si es el primer comando enviado
         self._headers = b''  # Las cabeceras que se enviaron en la petición
         self._origin = origin or server
-        self._port = port or 443  # El puerto de la conexión https
+        self._port = port or 443  # El puerto de la conexión
         self._server = server
         self._name = name
         self._serverheaders = b''  # Las caberceras de respuesta recibidas
@@ -1347,28 +1335,26 @@ class WSConnection:
 
     def connect(self) -> bool:
         """ Iniciar la conexión con el servidor y llamar a _handshake() """
-        #with self._tlock:
-        if not self._connected:
+        with self._tlock:
+            if not self._connected:
 
-            self._connectattempts += 1
-            self._sock = socket.socket()
-            #        print(self._server)
-            #        print(self._port)
-            # TODO Comprobar, si no hay internet hay error acá
-            self._sock.connect((self._server, self._port))
-            self._sock.setblocking(False)
-            self._handShake()
-            self._pingTask = Task(90, self._ping, True)
-            self._connected = True
-            #        if not self._fedder:
-            #            self._fedder = threading.Thread(
-            #                target=self._feed,
-            #                name=self._name or 'WSConnection',
-            #                    )
-            #            self._fedder.daemon = True
-            #            self._fedder.start()
-            return True
-        return False
+                self._connectattempts += 1
+                self._sock = socket.socket()
+                # TODO Comprobar, si no hay internet hay error acá
+                self._sock.connect((self._server, self._port))
+                self._sock.setblocking(False)
+                self._handShake()
+                self._pingTask = Task(90, self._ping, True)
+                self._connected = True
+                if not self._fedder:
+                    self._fedder = threading.Thread(
+                        target=self._feed,
+                        name=self._name or 'WSConnection',
+                            )
+                    self._fedder.daemon = True
+                    self._fedder.start()
+                return True
+            return False
 
     def _handShake(self):
         """
@@ -1384,41 +1370,37 @@ class WSConnection:
                          "Sec-WebSocket-Version: {}\r\n"
                          "\r\n").format(self._server, self._port, self._origin,
                                         WS.genseckey(), WS.VERSION).encode()
-        self._setWriteLock(True)
         self._wbuf = self._headers
+        self._setWriteLock(True)
 
-    async def _feed(self):
-        #while self._connected:
-        #time.sleep(0.01)
-        #print("ALIMENTANDO")
-        try:
-            with self._tlock:
-                rd, wr, sp = select.select((self._sock and [self._sock] or []),
-                                       (self._wbuf and [self._sock] or []),
-                                       [],
-                                       0.2)
+    def _feed(self):
+        while self._connected:
+            time.sleep(0.01)
+            try:
+                if not self._sock:
+                    continue
+                rd, wr, sp = select.select([self._sock],
+                                           (self._wbuf and [
+                                               self._sock] or []),
+                                           [],
+                                           0.2)
                 for x in wr:
                     try:
-                        size = self._sock.send(self._wbuf)
-                        #print(self,end="")
-                        #print(" ENVIADO ",end="")
-                        #print(self._wbuf[:size])
-                        self._wbuf = self._wbuf[size:]
+                        with self._tlock:
+                            size = self._sock.send(self._wbuf)
+                            self._wbuf = self._wbuf[size:]
                     except Exception as e:
                         if debug:
                             print("Error sock.send " + str(e), sys.stderr)
                 for x in rd:
 
                     chunk = None
-                    
-                    #with self._tlock:
+                    # with self._tlock:
                     if self._sock:
                         chunk = self._sock.recv(1024)
 
                     if chunk:
-                        #print("RECIBIDO ",end="")
-                        #print(chunk)
-                        await asyncio.create_task(self.onData(chunk))
+                        self.onData(chunk)
                         # TODO calificar comandos de respuesta instantanea
                         # TODO separar esos _rcmd_ y usar un único thread para ellos
                         # threading.Thread(target=self.onData, name="Process", args=(chunk,)).start()
@@ -1432,25 +1414,25 @@ class WSConnection:
                                 self.reconnect()
                                 # TODO este reconnect puede bloquearse
                                 # ConnectionRefusedError
-        except socket.error as cre:  # socket.error -
-            # ConnectionResetError
-            # TODO controlar tipo de error
-            with WSConnection._WSLOCK:
-                self.test = cre  # variable de depuración para
-                # android
-                self._callEvent("onConnectionLost", cre)
-                attempts = 1  # Intentos de
-                self._connectattempts = 0
-                while attempts:
-                    try:
-                        self.reconnect()
-                        attempts = 0
-                        # TODO asegurar el reinicio del contador
-                    except Exception as sgai:  # socket.gaierror:  #
-                        # En caso de que no haya internet
-                        self._callEvent('onConnectionAttempt', sgai)
-                        attempts += 1
-                        time.sleep(10)
+            except socket.error as cre:  # socket.error -
+                # ConnectionResetError
+                # TODO controlar tipo de error
+                with WSConnection._WSLOCK:
+                    self.test = cre  # variable de depuración para
+                    # android
+                    self._callEvent("onConnectionLost", cre)
+                    attempts = 1  # Intentos de
+                    self._connectattempts = 0
+                    while attempts:
+                        try:
+                            self.reconnect()
+                            attempts = 0
+                            # TODO asegurar el reinicio del contador
+                        except Exception as sgai:  # socket.gaierror:  #
+                            # En caso de que no haya internet
+                            self._callEvent('onConnectionAttempt', sgai)
+                            attempts += 1
+                            time.sleep(10)
 
     def _sendCommand(self, *args):
         """
@@ -1465,22 +1447,19 @@ class WSConnection:
             else:
                 terminator = self._terminator[1]
             cmd = ":".join(str(x) for x in args) + terminator
-            #print("SEND ",end="")
-            #print(cmd)
             self._write(WS.encode(cmd))
 
     def _ping(self):
         self._sendCommand('')
         self._callEvent('onPing')
 
-    async def _process(self, data: str):
+    def _process(self, data: str):
         """
         TODO si en este punto los datos incluyen \x00 hay que revisar algo
         Procesar un comando recibido del servidor
         @param data: Un string
         @return: None
         """
-        #print("EON PROCESS "+data)
         data = data.rstrip("\r\n\x00")
         self._callEvent("onRaw", data)
         data = data.split(":")
@@ -1488,8 +1467,7 @@ class WSConnection:
         func = "_rcmd_" + cmd
         if hasattr(self, func):
             try:
-                #await getattr(self, func)(args)
-                self.mgr._add_order(getattr(self, func),(args))
+                getattr(self, func)(args)
             except Exception as e:
                 self._callEvent('onProcessError', func, e)
                 print('[%s][%s] ERROR ON PROCESS "%s" "%s"' % (
@@ -1537,12 +1515,11 @@ class WSConnection:
         """Buffer de escritura"""
         return self._wbuf
 
-    async def onData(self, data: bytes):
+    def onData(self, data: bytes):
         """
         Al recibir datos del servidor
         @param data: Los datos recibidos y sin procesar
         """
-        
         self._rbuf += data  # Agregar los datos al buffer de lectura
         if not self._serverheaders and b'\r\n' * 2 in data:
             self._serverheaders, self._rbuf = self._rbuf.split(b'\r\n' * 2, 1)
@@ -1569,7 +1546,7 @@ class WSConnection:
                     self._disconnect()  # TODO reconectar
                 elif info.opcode == WS.TEXT:
                     # El frame contiene datos
-                    await asyncio.create_task(self._process(payload))
+                    self._process(payload)
                 elif debug:
                     print('Frame no controlado: "{}"'.format(payload),
                           file = sys.stderr)
@@ -1857,8 +1834,6 @@ class PM(CHConnection):
     def _login(self):
         # TODO el 2 es la versión del cliente
         r2 = ["tlogin", self._getAuth(self.mgr.name, self.mgr.password), "2"]
-        #print(r2[1])
-        #exit()
         if not r2[1]:
             self._callEvent("onLoginFail")
             self.disconnect()
@@ -2091,15 +2066,14 @@ class PM(CHConnection):
 
     def _rcmd_wl(self, args):
         """Lista de contactos recibida al conectarse"""
-        # Restart contact list
+        # TODO Revisar esta sección
         self._contacts = set()
-        # Iterate over each contact
         for i in range(len(args) // 4):
             name, last_on, is_on, idle = args[i * 4: i * 4 + 4]
             user = User(name)
             if last_on == "None":
-                last_on = 0
-            elif is_on != "on":
+                pass  # TODO in case chatango gives a "None" as data argument
+            elif not is_on == "on":
                 self._status[user] = [int(last_on), False, 0]
             elif idle == '0':
                 self._status[user] = [int(last_on), True, 0]
@@ -3310,10 +3284,10 @@ class Room(CHConnection):
         """Temporary ban sigue activo con el tiempo indicado"""
         self._callEvent("onFloodBanRepeat", int(args[0]))
 
-    def _rcmd_u(self, args):
+    def _rcmd_u(self, args):  # TODO
         if args[0] in self._mqueue:
             msg = self._mqueue.pop(args[0])
-            if msg.user != self.user:
+            if msg._user != self.user:
                 msg.user._fontColor = msg.fontColor
                 msg.user._fontFace = msg.fontFace
                 msg.user._fontSize = msg.fontSize
@@ -3400,7 +3374,6 @@ class Gestor:
     _TimerResolution = 0.2
     maxHistoryLength = 700
     PMHost = "c1.chatango.com"
-    TREAD_LIMIT=5
 
     def __dir__(self):
         return [x for x in
@@ -3424,15 +3397,13 @@ class Gestor:
         self._running = None
         self._user = User(self._name)
         self._tasks = set()
+        self._pm = None
         self._badconns = queue.Queue()
         self._fontColor = '000000'
         self._fontSize = '12'
         self._fontFace = '0'
         self.bgmode = False
         self._pm = pm
-        self._threads=set()
-        self._taskqueue=queue.Queue()
-
 
     ####
     # Propiedades
@@ -3469,12 +3440,12 @@ class Gestor:
         return list(self._rooms.keys())
 
     @classmethod
-    def easy_start(cls, rooms: list = None, name: str = '',
-                   password: str = '', pm: bool = True,
+    def easy_start(cls, rooms: list = None, name: str = None,
+                   password: str = None, pm: bool = True,
                    accounts: [(str, str), (str, str), ...] = None):
         """
         Inicio rápido del bot y puesta en marcha
-        @param rooms: Una lista de salas
+        @param rooms: Una lista de sslas
         @param name: Nombre de usuario
         @param password: Clave de conexión
         @param pm: Si se usará el PM o no
@@ -3487,12 +3458,15 @@ class Gestor:
             rooms = []
         if not name and not accounts:
             name = str(input("Usuario: "))
+        if not name:
+            name = ''
         if not password and not accounts:
             password = str(input("Contraseña: "))
+        if not password:
+            password = ''
         if not accounts:
             accounts = [(name, password)]
         self = cls(name, password, pm, accounts)
-
         for room in rooms:
             self.joinRoom(room)
 
@@ -3551,24 +3525,8 @@ class Gestor:
         else:
             return False
 
-    def _join_room_task(self):
-        with self.connlock:
-            if self._colasalas.qsize()<1:
-                return
-            room, account = self._colasalas.get()
-            try:
-                #print("CONECTANDO A SALA")
-                con = Room(room, self, account)
-                self._rooms[room] = con
-            except TimeoutError as fallo:
-                print("[{0}][{1}] El servidor de la sala no responde".format(
-                    time.strftime('%I:%M:%S %p'), room), file=sys.stderr)
-
-    async def _joinThread(self):
+    def _joinThread(self):
         while True:
-            await asyncio.sleep(0.1)
-            if self._colasalas.qsize()<1:
-                continue
             room, account = self._colasalas.get()
             try:
                 con = Room(room, self, account)
@@ -3589,7 +3547,6 @@ class Gestor:
         """
         Poner en marcha al bot
         """
-        self.onInit()
         while self._pm == True:
             try:
                 self._pm = PM(mgr=self, name=self.name,
@@ -3599,38 +3556,18 @@ class Gestor:
                     time.strftime('%I:%M:%S %p')
                 ))
                 time.sleep(10)
-        
+
+        self.onInit()
         if self._running == False:
             return
         self._running = True
-
-        while len(self._threads)<Gestor.TREAD_LIMIT:
-            new_thread=threading.Thread(target = self._stand_by,
-                                    name = "Thread_"+str(len(self._threads)+1))
-            new_thread.daemon=True
-            new_thread.start()
-            self._threads.add(new_thread)
-
-        #self._jt = threading.Thread(target = self._joinThread,
-        #                            name = "Join rooms")
-        #self._jt.daemon = True
-        #self._jt.start()
-        # TODO replace with loop.runforever
-        self._loop=asyncio.new_event_loop()
-        asyncio.run_coroutine_threadsafe(self._joinThread(), self._loop)
-        asyncio.run_coroutine_threadsafe(self._read_connection_data(), self._loop)
-        #self._loop.call_soon_threadsafe(self._joinThread)
-        #self._loop.call_soon_threadsafe(self._read_connection_data)
-        t=threading.Thread(target=self._start_loop,args=(self._loop,))
-        t.daemon=True
-        t.start()
+        self._jt = threading.Thread(target = self._joinThread,
+                                    name = "Join rooms")
+        self._jt.daemon = True
+        self._jt.start()
         while self._running:
-
-            #self._add_order(self._join_room_task)
-            #self._add_order(self._read_connection_data)
-            #self._add_order(self._process_connection_data)
-            #self._add_order(self._write_connection_data)
-            time.sleep(0.2)
+            time.sleep(0.01)
+            pass
 
         # Finish
         # Cerrar conexiones
@@ -3639,57 +3576,6 @@ class Gestor:
         # Cancelar tareas
         for x in list(self._tasks):
             x.cancel()
-        for x in self._threads:
-            x.stop()
-
-    def _start_loop(self,loop):
-        asyncio.set_event_loop(loop)
-        loop.run_forever()
-
-    async def _read_connection_data(self):
-        
-        #print("LEYENDO CONEXIONES")
-        #print(conns)
-        try:
-            while True:
-                await asyncio.sleep(0.1)
-                conns=self.getConnections()
-                for con in conns:
-                    #self._add_order(con._feed)
-                    #self._loop.call_soon(con._feed())
-                    await asyncio.create_task(con._feed())
-
-                    #asyncio.run_coroutine_threadsafe(con._feed(), self._loop)
-                    #asyncio.run_coroutine_threadsafe(con._feed(), self._loop)
-        except socket.error as cre:  # socket.error -
-            # ConnectionResetError
-            # TODO controlar tipo de error
-            with WSConnection._WSLOCK:
-                self.test = cre  # variable de depuración para
-                # android
-                self._callEvent("onConnectionLost", cre)
-                attempts = 1  # Intentos de
-                self._connectattempts = 0
-                while attempts:
-                    try:
-                        x.reconnect()
-                        attempts = 0
-                        # TODO asegurar el reinicio del contador
-                    except Exception as sgai:  # socket.gaierror:  #
-                        # En caso de que no haya internet
-                        self._callEvent('onConnectionAttempt', sgai)
-                        attempts += 1
-                        time.sleep(10)
-
-    def _stand_by(self):
-        while self._running:
-            #print("BUSCANDO FUNCION")
-            func, args, kwargs = self._taskqueue.get()
-            func(*args,**kwargs)
-            time.sleep(0.01)
-
-    def _add_order(self,func,*args,**kw):
-        self._taskqueue.put((func,args,kw))
 
     def removeTask(self, task):
         """Eliminar una tarea"""
