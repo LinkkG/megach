@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuration
 ################################################################
-version = 'M.1.7.3'
+version = 'M.1.7.4'
 version_info = version.split('.')
 debug = True
 autoupdate = True  # for special servers and tsweights
@@ -79,6 +79,21 @@ tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
              ["77", sv12], ["78", sv12], ["79", sv12], ["80", sv12],
              ["81", sv12], ["82", sv12], ["83", sv12], ["84", sv12]]
 
+def _checkonline(web="http://chatango.com"):
+    # TODO unir con RPOSt y borrar este def
+    host=web.split("/")[-1]
+    request = urlreq.Request(web, method = 'HEAD', headers={
+        "Host":host,
+        "User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:79.0) Gecko/20100101 Firefox/79.0"
+        })
+    c=False
+    try:
+        c = urlreq.urlopen(request)
+        if c.status == 200:
+            return c
+    except Exception as e:
+        pass
+    return c
 
 def updatePath():
     """Get this module's directory and appends to path"""
@@ -158,7 +173,7 @@ AdminFlags = (ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] |
 Fonts = {
     'arial':    0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4,
     'palatino': 5, 'papirus': 6, 'times': 7, 'typewriter': 8
-    }
+}
 
 MessageFlags = {
     'IS_PREMIUM':  4, 'HAS_BG': 8, 'BADGE_SHIELD': 64, 'BADGE_STAFF': 128,
@@ -389,6 +404,7 @@ def _fontFormat(text):
             text = text.replace(original, cambio)
     return text
 
+
 # TODO check
 def _videoImagePMFormat(text):
     """Returns text with formatted video and image for PM sending"""
@@ -610,6 +626,7 @@ class WS:
         @param boundary: Separador de los datos codificados
         @return: String encodeado
         """
+
         # TODO check
         def escape_quote(s):
             return s.replace('"', '\\"')
@@ -782,6 +799,7 @@ class User:
                 if attr == 'ip' and not val:
                     continue  # only valid ips
                 setattr(cls._users[key], '_' + attr, val)
+                cls._users[key].setName(name)
             return cls._users[key]
         self = super().__new__(cls)
         cls._users[key] = self
@@ -1346,9 +1364,8 @@ class WSConnection:
     def connect(self) -> bool:
         """ Iniciar la conexión con el servidor y llamar a _handshake() """
         with self._tlock:
+            self._connectattempts += 1
             if not self._connected:
-
-                self._connectattempts += 1
                 self._sock = socket.socket()
                 # TODO Comprobar, si no hay internet hay error acá
                 self._sock.connect((self._server, self._port))
@@ -1360,7 +1377,7 @@ class WSConnection:
                     self._fedder = threading.Thread(
                         target=self._feed,
                         name=self._name or 'WSConnection',
-                            )
+                    )
                     self._fedder.daemon = True
                     self._fedder.start()
                 return True
@@ -1427,22 +1444,27 @@ class WSConnection:
             except socket.error as cre:  # socket.error -
                 # ConnectionResetError
                 # TODO controlar tipo de error
+                self.test = cre  # variable de depuración para android
+                self._callEvent("onConnectionLost", cre)
+                attempts=1 # connection attempts
+                self._connectattempts = 0
                 with WSConnection._WSLOCK:
-                    self.test = cre  # variable de depuración para
-                    # android
-                    self._callEvent("onConnectionLost", cre)
-                    attempts = 1  # Intentos de
-                    self._connectattempts = 0
-                    while attempts:
-                        try:
-                            self.reconnect()
-                            attempts = 0
-                            # TODO asegurar el reinicio del contador
-                        except Exception as sgai:  # socket.gaierror:  #
-                            # En caso de que no haya internet
-                            self._callEvent('onConnectionAttempt', sgai)
-                            attempts += 1
-                            time.sleep(10)
+                    while not checkonline():
+                        # No internet or chatango fails here
+                        self._connectattempts += 1
+                        self._callEvent('onConnectionAttempt', 'NO INTERNET or CHATANGO DOWN')
+                        attempts += 1
+                        time.sleep(10)
+                while attempts:
+                    # for this ROOM/PM only
+                    try:
+                        self.reconnect()
+                        attempts=0
+                    except Exception as sgai:  # socket.gaierror:  #
+                        # En caso de que no haya internet
+                        self._callEvent('onConnectionAttempt', sgai)
+                        attempts += 1
+                        time.sleep(10)
 
     def _sendCommand(self, *args):
         """
@@ -1584,7 +1606,7 @@ class WSConnection:
         self._wlockbuf = b''  # Buffer de escritura bloqueada
         self._firstCommand = False
         self._tlock = threading.Lock()
-        self._connlock = threading.Lock() # TODO delete lock
+        self._connlock = threading.Lock()  # TODO delete lock
         self._mods = dict()
 
 
@@ -2781,7 +2803,7 @@ class Room(CHConnection):
         TODO sacar la parte del archivo
         Sube una imagen al servidor y regresa el número
         @param img: url de una imagen (local o web). También puede ser un
-        archivo de bytes con la propiedad read()
+        archivo de bytes con el métdo read()
         @param url: Indica si retornar una url o solo el número. Defecto(False)
         @return: string con url o número de la imagen
         """
@@ -3067,8 +3089,6 @@ class Room(CHConnection):
                 else:
                     name = '!' + getAnonName(puid, contime)
             user = User(name, room=self, isanon=isanon, puid=puid)
-            if user in ({self._owner} | self.mods):
-                user.setName(name)
             user.addSessionId(self, ssid)
             self._userdict[ssid] = [contime, user]
 
@@ -3105,11 +3125,10 @@ class Room(CHConnection):
         """
         self._reload()
         if self.attempts <= 1:
-            self._connectattempts = 1
             self._callEvent("onConnect")
         else:
             self._callEvent("onReconnect")
-            self._connectattempts = 1
+        self._connectattempts = 1
         # TODO, rellenar history hasta el límite indicado
         # self._sendCommand("get_more:20:" + str(self._waitingmore -  1))
 
