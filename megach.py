@@ -1364,10 +1364,9 @@ class WSConnection:
     def connect(self) -> bool:
         """ Iniciar la conexión con el servidor y llamar a _handshake() """
         with self._tlock:
-            self._connectattempts += 1
             if not self._connected:
+                self._connectattempts += 1
                 self._sock = socket.socket()
-                # TODO Comprobar, si no hay internet hay error acá
                 self._sock.connect((self._server, self._port))
                 self._sock.setblocking(False)
                 self._handShake()
@@ -1657,8 +1656,9 @@ class CHConnection(WSConnection):
             self.connect()
 
     def connect(self):
-        super().connect()
-        self._login()
+        if super().connect():
+            # TODO must do something here (?)
+            self._login()
 
     @property
     def account(self) -> str:
@@ -3589,8 +3589,7 @@ class Gestor:
         if self._running == False:
             return
         self._running = True
-        self._jt = threading.Thread(target = self._joinThread,
-                                    name = "Join rooms")
+        self._jt = threading.Thread(target = self._joinThread, name = "Join rooms")
         self._jt.daemon = True
         self._jt.start()
         while self._running:
@@ -4173,7 +4172,7 @@ class Gestor:
     def onPremiumChange(self, room, user):
         """
         Al detectar un cambio en el estado premium de un usuario
-        @param room: Sala o  pm donde ocurre 
+        @param room: Sala o  pm donde ocurre
         @param user: Usuario que ha recibido o perdido estado premium
         """
         pass
