@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuration
 ################################################################
-version = 'M.1.7.4'
+version = 'M.1.7.5'
 version_info = version.split('.')
 debug = True
 autoupdate = True  # for special servers and tsweights
@@ -1408,8 +1408,8 @@ class WSConnection:
                 rd, wr, sp = select.select([self._sock],
                                            (self._wbuf and [
                                                self._sock] or []),
-                                           [],
-                                           0.2)
+                                           [self._sock],
+                                           0.0)
                 for x in wr:
                     try:
                         with self._tlock:
@@ -1430,16 +1430,16 @@ class WSConnection:
                         # TODO calificar comandos de respuesta instantanea
                         # TODO separar esos _rcmd_ y usar un único thread para ellos
                         # threading.Thread(target=self.onData, name="Process", args=(chunk,)).start()
-                    elif chunk is not None:
+                    elif chunk == b'':
                         # Conexión perdida
                         with WSConnection._SAFELOCK:
-                            if not self._serverheaders:  # Nunca se recibió
-                                # comandos de la conexión
-                                self.disconnect()
-                            else:
-                                self.reconnect()
-                                # TODO este reconnect puede bloquearse
-                                # ConnectionRefusedError
+                            #if not self._serverheaders:  # Nunca se recibió
+                            #    # comandos de la conexión
+                            #    pass #self.disconnect()
+                            #else:
+                            self.reconnect()
+                            #    # TODO este reconnect puede bloquearse
+                            #    # ConnectionRefusedError
             except socket.error as cre:  # socket.error -
                 # ConnectionResetError
                 # TODO controlar tipo de error
@@ -1448,7 +1448,7 @@ class WSConnection:
                 attempts=1 # connection attempts
                 self._connectattempts = 0
                 with WSConnection._WSLOCK:
-                    while not checkonline():
+                    while not _checkonline():
                         # No internet or chatango fails here
                         self._connectattempts += 1
                         self._callEvent('onConnectionAttempt', 'NO INTERNET or CHATANGO DOWN')
