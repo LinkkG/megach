@@ -2210,6 +2210,18 @@ class Room(CHConnection):
         return sorted([x[1] for x in list(self._userdict.values())],
                       key=lambda z: z.name.lower())
 
+    @property
+    def userdict(self): # Try not to use it directly and do not modify it
+        return self._userdict
+    
+    @property
+    def allusertimes(self): # With anons and repeated
+        return [(y,float(x)) for x,y in self._userdict.values()]
+    
+    @property
+    def usertimes(self): # No anons and no repeated users
+        return list(dict([(x,y) for x,y in sorted(self.allusertimes,key=lambda x:x[1]) if not x.isanon]).items())
+    
     ##########
     # Nombres de Usuarios
     @property
