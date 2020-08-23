@@ -6,6 +6,11 @@ Autor: Megamaster12
 Incluirá las opciones básicas e iré añadiendo más poco a poco
 Versión 1.5.3
 """
+import os  # Para acceder a cosas específicas de tu sistema operativo
+import random  # Para seleccion aleatoria
+import string  # Para operaciones con cadenas de texto
+import time  # Para operaciones con la hora
+
 ################################################################
 # No brrar las dos primeras lineas, son opciones de python para el archivo
 # Estos son comentarios, la compu no los lee y el python los ignora
@@ -16,30 +21,31 @@ Versión 1.5.3
 ################################################################
 # Módulos básicos
 import megach  # Mi megach, es una librería pública para chatango
-import os  # Para acceder a cosas específicas de tu sistema operativo
-import random  # Para seleccion aleatoria
-import socket  # Para administrar conexiones
-import string  # Para operaciones con cadenas de texto
-import sys  # Para detalles de tu versión de python
-import time  # Para operaciones con la hora
-import urllib.request as urlreq  # Consultas web
-import urllib.parse as urlparse  # Lectura de datos web
 
-version = '1.5.3'
+version = '1.5.4'
 
 
-
-class config:
-    botnames = 'e15 examplebot boteto'.split()
+class Config:
+    """
+    Variables generales para configuración.
+    """
+    botnames = 'e15 examplebot boteto'.lower().split()
     # Dueños, Solo minúsculas
     owners = ['megamaster12', 'linkkg', 'milton797']
     # Uno o más prefijos separados por espacio
     prefijos = '% $'.split()
     # Ruta para el archivo simi
     rutasim = os.path.join(os.getcwd(), 'simi.json')
+    # Lista de cuentas, la primera se usa como principal.
+    accounts = [('Account1', 'Pass1'),
+                ('Cuenta2', 'Clave2')]
+    # Inicia el pm o no
+    pm = True
+    # Lista de salas a las que unirse
+    rooms = ['pythonrpg']
 
 
-class Mibot(megach.Gestor):
+class MiBot(megach.Gestor):
     """
     Mi implementación del bot
     También es posible crearla de la siguiente manera
@@ -54,31 +60,39 @@ class Mibot(megach.Gestor):
         print("Inicio del BOT")
         self.setNameColor("FF0000")  # color del nombre en hexadecimal
         self.setFontColor("0000FF")  # color de la letra en hexadecimal
-        self.setFontFace("Typewriter")  # Fuente del bot
+        self.setFontFace("Arial")  # Fuente del bot
         self.setFontSize(12)  # Tamaño de fuente, el maximo es 14 sin premium
         self.enableBg()  # Si el bot tiene premium, activar el bg
+
+    def onStop(self):
+        """Invocado para avisar cierre del bot"""
+        print("Cerrando el BOT")
 
     def onMessage(self, room, user, message):
         """Al recibir un mensaje en una sala"""
         try:
             nick = '@' + user
-            ubic = "".join({
-                32768: "MOD", 256: "RED", 0: "NORMAL", 2048: "BLUE",
-                2304:  "BLUE+RED"
-                }.get(
-                    message.channel))
-            print("[{0:_^10.10}][{4}][{3}] {1}: {2} ".format(
-                    room.name,
-                    user.name.title(),
-                    message.body.replace("&#39;", "'"),
-                    time.strftime("%I:%M:%S %p"),
-                    ubic))
+            channels_dict = {
+                32768: "MOD", 256: "RED", 0: "NORMAL",
+                2048: "BLUE", 2304: "BLUE+RED"
+            }
+            ubic = "".join(channels_dict.get(message.channel, "UNK"))
+
+            # Print en consola
+            print_text = "[{0:_^10.10}][{4}][{3}] {1}: {2}"
+            print_text = print_text.format(
+                room.name, user.name.title(),
+                message.body.replace("&#39;", "'"),
+                time.strftime("%I:%M:%S %p"), ubic
+            )
+            print(print_text)
+
+            # Comprobar si no es el propio usuario
             if user == room.user:
                 return
 
-            if len(
-                    message.body.split()) > 1:  # Si el mensaje contenía más
-                # de una palabra
+            if len(message.body.split()) > 1:
+                # Si el mensaje contenía más de una palabra
                 # El comando será la primera palabra y los argumentos serán
                 # el resto
                 # El .replace es para que puedas usar el simbolo ' en tus
@@ -91,12 +105,14 @@ class Mibot(megach.Gestor):
 
             # cmd= comando usado #args=argumentos que recibe el comando
             # Comprobar si se usó el prefijo y separarlo del comando
-            if cmd and cmd[0] in config.prefijos:
+            if cmd and cmd[0] in Config.prefijos:
                 prfx = True
                 cmd = cmd[1:].lower()
             else:
                 prfx = False
-            if prfx:  # Si se uso el prefijo
+
+            # Si se uso el prefijo
+            if prfx:
                 ################################################################
                 # Aqui comienzan los comandos, puedes poner los que quieras
                 # mientras esten dentro
@@ -113,14 +129,14 @@ class Mibot(megach.Gestor):
                     room.message("o(^^o) ---- ^(oo)^ ---- (o^^)o")
 
                 # Conectarse a una sala distinta
-                elif cmd in ['conecta', 'join'] and user.name in config.owners:
+                elif cmd in ['conecta', 'join'] and user.name in Config.owners:
                     if self.joinRoom(args):
                         room.message("Conectado ♪")
                     else:
                         room.message("No puedo ir...")
 
                 # Desconectarse de alguna sala
-                elif cmd == "desconecta" and user.name in config.owners:
+                elif cmd == "desconecta" and user.name in Config.owners:
                     if args.lower() in self._rooms:
                         self.leaveRoom(args)
                         room.message("Desconectado")
@@ -141,7 +157,7 @@ class Mibot(megach.Gestor):
                 elif cmd in ['sim', 'simi']:
                     clave, definicion = [x.strip() for x in args.split(":", 1)]
                     archivo = open(os.path.join(os.getcwd(), 'simi.json'), "a",
-                                   encoding = 'utf-8')
+                                   encoding='utf-8')
                     archivo.write(clave + ":" + definicion + "\n")
                     resultado = "Respuesta guardada correctamente ;)"
                     room.message(resultado)
@@ -149,7 +165,7 @@ class Mibot(megach.Gestor):
                 ################################################################
                 # Sección para desarrolladores
                 ################################################################
-                if user.name in config.owners:
+                if user.name in Config.owners:
                     if cmd in ['eval', 'ev'] and args:
                         args = message.fullbody.split(' ', 1)[1]
                         try:
@@ -161,18 +177,21 @@ class Mibot(megach.Gestor):
 
                                 raise Exception(str(e2) + '---' + str(err) + (
                                         str(e2) == str(
-                                        err) and 'son iguales' or 'no me '
-                                                                  'salen '
-                                                                  'igual :v'))
+                                    err) and 'son iguales' or 'no me '
+                                                              'salen '
+                                                              'igual :v'))
                     if cmd in ['ex']:
                         room.message(str(exec(args)))
-            else:  # if prefix, este es el else
+
+            # if prefix, este es el else
+            else:
                 cmd = message.body
-                splitted = ''.join(x for x in cmd if
-                                   x.isalnum() or x in [' ']).lower().split()
+                splitted = ''.join(
+                    x for x in cmd if x.isalnum() or x in [' ']
+                ).lower().split()
                 ######################################################
                 # NO PREFIX USED
-                for x in config.botnames + [room.user.name.lower()]:
+                for x in Config.botnames + [room.user.name.lower()]:
                     if x in splitted:
                         cmd = ''.join(cmd.split(x)).strip()  # Clear mentions
                         break
@@ -180,19 +199,21 @@ class Mibot(megach.Gestor):
                     return  # No mentions al bot
                 if len(splitted) == 1:
                     room.message(random.choice(
-                            ['¿Que pasa?', '¿Que quiere prro v:<',
-                             '¿Necesitas hamor?']))
+                        ['¿Que pasa?', '¿Que quiere prro v:<',
+                         '¿Necesitas hamor?']))
                     return
                 ######################################################
                 # SIMI SECTION
                 try:
-                    resultado = mysimianswer(cmd, nick = nick, r = '\r',
-                                             prefix = random.choice(
-                                                     config.prefijos),
-                                             prefijo = random.choice(
-                                                     config.prefijos),
-                                             name = room.user.showname,
-                                             room = room)
+                    resultado = Simi.mysimianswer(
+                        cmd,
+                        nick=nick,
+                        r='\r',
+                        prefix=random.choice(Config.prefijos),
+                        prefijo=random.choice(Config.prefijos),
+                        name=room.user.showname,
+                        room=room
+                    )
                     if not resultado:
                         resultado = 'No answer, sorry :v'
                 except Exception as e15:
@@ -202,6 +223,10 @@ class Mibot(megach.Gestor):
 
         except Exception as e4:
             room.message(str(e4))
+
+    #######################################################
+    # Funciones especiales de la librería.
+    #######################################################
 
     def onPMMessage(self, pm, user, message):
         """
@@ -232,7 +257,7 @@ class Mibot(megach.Gestor):
             room.user,
             room.attempts,
             room.attempts > 1 and 's' or ''
-            )
+        )
               )
 
     def onPMConnect(self, pm):
@@ -243,7 +268,7 @@ class Mibot(megach.Gestor):
             pm.user,
             pm.attempts,
             pm.attempts > 1 and 's' or ''
-            )
+        )
               )
 
     def onReconnect(self, room):
@@ -263,85 +288,92 @@ class Mibot(megach.Gestor):
         print('[%s][%s] Desconectado' % (time.strftime("%I:%M:%S %p"), room))
 
 
-def crea(archivo, texto):
+class Simi:
     """
-    Crea una definicion en un archivo con formato indicado por dos puntos
-    @param archivo: Archivo al que agregar la definición
-    @param texto: Texto que incluya dos puntos
+    Funciones para simi.
     """
-    if ':' not in texto:
-        return False
-    archivo = open(archivo, 'a', encoding = 'utf-8')
-    clave, valor = texto.split(':', 1)
-    archivo.write('%s:%s' % (clave.title(), valor + '\n'))
-    return True
 
+    @staticmethod
+    def crea(archivo, texto):
+        """
+        Crea una definicion en un archivo con formato indicado por dos puntos
+        @param archivo: Archivo al que agregar la definición
+        @param texto: Texto que incluya dos puntos
+        """
+        if ':' not in texto:
+            return False
+        archivo = open(archivo, 'a', encoding='utf-8')
+        clave, valor = texto.split(':', 1)
+        clave = clave if clave.startswith(("https:", "http")) else clave.title()
+        archivo.write('%s:%s' % (clave, valor + '\n'))
+        return True
 
-def define(archivo, texto = '', match = 1):
-    """Busca una definición exacta en un archivo.
-    Formato de archivo->frase:defincion"""
-    if not os.path.exists(archivo):  # Si no existe
-        open(archivo, 'a', encoding = 'utf-8').close()  # Crearlo
-    texto = limpiaTexto(texto)
-    archivo = open(archivo, encoding = 'utf-8')
-    # Separar texto para buscar por palabras
-    sep = texto.split()
-    # Crear un arreglo con las lineas del archivo
-    lineas = archivo.read().splitlines()
-    # Cada uno de los valores que tenga coincidencias con la busqueda
-    matches = []
-    for x in lineas:
-        if any([z in limpiaTexto(x.split(':', 1)[0]) for z in sep if
-                len(z) >= match]):
-            matches.append(x)
-    # Nivel 2
-    # Buscar la mayor coincidencia
-    mayor = -1
-    filtro = []
-    if matches:
-        for x in matches:
-            actual = len(
+    @staticmethod
+    def define(archivo, texto='', match=1):
+        """Busca una definición exacta en un archivo.
+        Formato de archivo->frase:defincion"""
+        if not os.path.exists(archivo):  # Si no existe
+            open(archivo, 'a', encoding='utf-8').close()  # Crearlo
+        texto = Simi.limpiaTexto(texto)
+        archivo = open(archivo, encoding='utf-8')
+        # Separar texto para buscar por palabras
+        sep = texto.split()
+        # Crear un arreglo con las lineas del archivo
+        lineas = archivo.read().splitlines()
+        # Cada uno de los valores que tenga coincidencias con la busqueda
+        matches = []
+        for x in lineas:
+            if any([z in Simi.limpiaTexto(x.split(':', 1)[0]) for z in sep if
+                    len(z) >= match]):
+                matches.append(x)
+        # Nivel 2
+        # Buscar la mayor coincidencia
+        mayor = -1
+        filtro = []
+        if matches:
+            for x in matches:
+                actual = len(
                     [a for a in sep if
-                     a in limpiaTexto(x.split(':')[0]).split()])
-            if actual > mayor:
-                mayor = actual
-                filtro.clear()
-                filtro.append(x)
-            elif actual == mayor:
-                filtro.append(x)
-        a, b = random.choice(filtro).split(':', 1)
-        return a, b
-    else:
-        return '', ''
+                     a in Simi.limpiaTexto(x.split(':')[0]).split()])
+                if actual > mayor:
+                    mayor = actual
+                    filtro.clear()
+                    filtro.append(x)
+                elif actual == mayor:
+                    filtro.append(x)
+            a, b = random.choice(filtro).split(':', 1)
+            return a, b
+        else:
+            return '', ''
 
-
-def limpiaTexto(texto):
-    """Regresa texto en minúsculas y sin acentos"""
-    texto = texto.lower().strip()
-    limpio = {
-        "á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u",
-        "@": "", "?": "", "!": "", ",": "", ".": "", "¿": ""
+    @staticmethod
+    def limpiaTexto(texto):
+        """Regresa texto en minúsculas y sin acentos"""
+        texto = texto.lower().strip()
+        limpio = {
+            "á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u",
+            "@": "", "?": "", "!": "", ",": "", ".": "", "¿": ""
         }
-    for y in limpio:
-        if y in texto:
-            texto = texto.replace(y, limpio[y])
-    return texto
+        for y in limpio:
+            if y in texto:
+                texto = texto.replace(y, limpio[y])
+        return texto
+
+    @staticmethod
+    def mysimianswer(cmd, **kw):
+        """Regresa una respuesta del simi.json al lado del fichero"""
+        ruta = os.path.join(os.getcwd(), 'simi.json')
+        consulta, definicion = Simi.define(ruta, cmd)
+        plantilla = string.Template(definicion)
+        resultado = plantilla.safe_substitute(**kw)
+        return resultado or 'No answer, sorry :v'
 
 
-def mysimianswer(cmd, **kw):
-    """Regresa una respuesta del simi.json al lado del fichero"""
-    ruta = os.path.join(os.getcwd(), 'simi.json')
-    consulta, definicion = define(ruta, cmd)
-    plantilla = string.Template(definicion)
-    resultado = plantilla.safe_substitute(**kw)
-    return resultado or 'No answer, sorry :v'
-
-
-accounts = [('Account1', 'Pass1'),
-            ('Cuenta2', 'Clave2')]
 try:
     # bot = Mibot.easy_start(['pythonrpg'], USERNAME,PASSWORD ,pm= True) #
     # También es válido así
-    bot = Mibot.easy_start(['pythonrpg'], pm = True, accounts = accounts)
-except socket.gaierror as e:  # En caso de que no haya internet
-    print("No hay internet, haz algo O.o")
+    bot = MiBot.easy_start(
+        Config.rooms, pm=Config.pm, accounts=Config.accounts
+    )
+except Exception as error:  # En caso de que no haya internet
+    print("Error en easy_start:", error)
