@@ -1326,7 +1326,7 @@ class WSConnection:
         self._terminator = ['\x00', '\r\n\x00']
         self._pingdata = ''
         self._fedder = None
-        self._pingTask = None #90
+        self._ping_time = 90
         self._last_ping = time.time()
 
     def __del__(self):
@@ -1356,8 +1356,6 @@ class WSConnection:
                     x.removeSessionId(self, 0)
             self._sock = None
             self._serverheaders = b''
-            if self._pingTask: # By Milton :v
-                self._pingTask.cancel()
             self._connected = False
 
     def connect(self) -> bool:
@@ -1369,7 +1367,6 @@ class WSConnection:
                 self._sock.connect((self._server, self._port))
                 self._sock.setblocking(False)
                 self._handShake()
-                self._pingTask = Task(90, self._ping, True)
                 self._connected = True
                 if not self._fedder:
                     self._fedder = threading.Thread(
@@ -1482,7 +1479,7 @@ class WSConnection:
 
     def _ping(self):
         new_time = time.time()
-        if (new_time - self._last_ping) >= 90: # self._pingTask: # TODO int?
+        if (new_time - self._last_ping) >= self._ping_time:
             self._sendCommand('')
             self._last_ping = new_time
             self._callEvent('onPing')
