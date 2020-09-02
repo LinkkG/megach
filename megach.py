@@ -148,24 +148,24 @@ _maxServernum = sum(x[1] for x in tsweights)
 ################################################################
 # TODO missing group flag 4096. What is it?
 GroupFlags = {
-    "LIST_TAXONOMY": 1, "NOANONS": 4, "NOFLAGGING": 8, "NOCOUNTER": 16,
-    "NOIMAGES": 32, "NOLINKS": 64, "NOVIDEOS": 128,
-    "NOSTYLEDTEXT": 256, "NOLINKSCHATANGO": 512,
+    "LIST_TAXONOMY":      1, "NOANONS": 4, "NOFLAGGING": 8, "NOCOUNTER": 16,
+    "NOIMAGES":           32, "NOLINKS": 64, "NOVIDEOS": 128,
+    "NOSTYLEDTEXT":       256, "NOLINKSCHATANGO": 512,
     "NOBRDCASTMSGWITHBW": 1024, "RATELIMITREGIMEON": 2048, "UNKNOWN": 4096,
-    "CHANNELSDISABLED": 8192, "NLP_SINGLEMSG": 16384,
-    "NLP_MSGQUEUE": 32768, "BROADCAST_MODE": 65536,
-    "CLOSED_IF_NO_MODS": 131072, "IS_CLOSED": 262144,
-    "SHOW_MOD_ICONS": 524288, "MODS_CHOOSE_VISIBLITY": 1048576,
-    "HAS_XML": 268435456, "UNSAFE": 536870912
-}
+    "CHANNELSDISABLED":   8192, "NLP_SINGLEMSG": 16384,
+    "NLP_MSGQUEUE":       32768, "BROADCAST_MODE": 65536,
+    "CLOSED_IF_NO_MODS":  131072, "IS_CLOSED": 262144,
+    "SHOW_MOD_ICONS":     524288, "MODS_CHOOSE_VISIBLITY": 1048576,
+    "HAS_XML":            268435456, "UNSAFE": 536870912
+    }
 
 ModFlags = {
-    'DELETED': 1, 'EDIT_MODS': 2, 'EDIT_MOD_VISIBILITY': 4,
-    'EDIT_BW': 8, 'EDIT_RESTRICTIONS': 16, 'EDIT_GROUP': 32,
-    'SEE_COUNTER': 64, 'SEE_MOD_CHANNEL': 128, 'SEE_MOD_ACTIONS': 256,
-    'EDIT_NLP': 512, 'EDIT_GP_ANNC': 1024, 'EDIT_ADMINS': 2048,
-    'EDIT_SUPERMODS': 4096, 'NO_SENDING_LIMITATIONS': 8192, 'SEE_IPS': 16384,
-    'CLOSE_GROUP': 32768, 'CAN_BROADCAST': 65536,
+    'DELETED':          1, 'EDIT_MODS': 2, 'EDIT_MOD_VISIBILITY': 4,
+    'EDIT_BW':          8, 'EDIT_RESTRICTIONS': 16, 'EDIT_GROUP': 32,
+    'SEE_COUNTER':      64, 'SEE_MOD_CHANNEL': 128, 'SEE_MOD_ACTIONS': 256,
+    'EDIT_NLP':         512, 'EDIT_GP_ANNC': 1024, 'EDIT_ADMINS': 2048,
+    'EDIT_SUPERMODS':   4096, 'NO_SENDING_LIMITATIONS': 8192, 'SEE_IPS': 16384,
+    'CLOSE_GROUP':      32768, 'CAN_BROADCAST': 65536,
     'MOD_ICON_VISIBLE': 131072, 'IS_STAFF': 262144
 }
 
@@ -929,8 +929,6 @@ class User:
 
     @property
     def info(self):
-        if self._info:
-            return self._info
         link = '/%s/%s/' % ('/'.join((self.name * 2)[:2]), self.name)
         urls = ('http://fp.chatango.com/profileimg' + link + 'mod1.xml',
                 'http://fp.chatango.com/profileimg' + link + 'mod2.xml')
@@ -982,8 +980,6 @@ class User:
     @property
     def style(self):
         # TODO comentar
-        if self._style:
-            return self._style
         try:
             link = '/%s/%s/' % ('/'.join((self.name * 2)[:2]), self.name)
             url = 'http://ust.chatango.com/profileimg' + link + 'msgstyles.json'
@@ -1330,8 +1326,7 @@ class WSConnection:
         self._terminator = ['\x00', '\r\n\x00']
         self._pingdata = ''
         self._fedder = None
-        self._pingTask = 90
-        self._last_ping = time.time()
+        self._pingTask = None
 
     def __del__(self):
         self._disconnect()
@@ -1360,6 +1355,8 @@ class WSConnection:
                     x.removeSessionId(self, 0)
             self._sock = None
             self._serverheaders = b''
+            if self._pingTask and hasattr(self._pingTask,"cancel"): # By Milton :v
+                self._pingTask.cancel()
             self._connected = False
 
     def connect(self) -> bool:
@@ -1371,6 +1368,7 @@ class WSConnection:
                 self._sock.connect((self._server, self._port))
                 self._sock.setblocking(False)
                 self._handShake()
+                self._pingTask = Task(90, self._ping, True)
                 self._connected = True
                 if not self._fedder:
                     self._fedder = threading.Thread(
@@ -1387,19 +1385,15 @@ class WSConnection:
         Crea un handshake y lo guarda en las variables antes de enviarlo a
         la conexión
         """
-        self._headers = (
-            "GET / HTTP/1.1\r\n"
-            "Host: {}:{}\r\n"
-            "Origin: {}\r\n"
-            "Connection: Upgrade\r\n"
-            "Upgrade: websocket\r\n"
-            "Sec-WebSocket-Key: {}\r\n"
-            "Sec-WebSocket-Version: {}\r\n"
-            "\r\n"
-        ).format(
-            self._server, self._port, self._origin,
-            WS.genseckey(), WS.VERSION
-        ).encode('latin-1')
+        self._headers = ("GET / HTTP/1.1\r\n"
+                         "Host: {}:{}\r\n"
+                         "Origin: {}\r\n"
+                         "Connection: Upgrade\r\n"
+                         "Upgrade: websocket\r\n"
+                         "Sec-WebSocket-Key: {}\r\n"
+                         "Sec-WebSocket-Version: {}\r\n"
+                         "\r\n").format(self._server, self._port, self._origin,
+                                        WS.genseckey(), WS.VERSION).encode('latin-1')
         self._setWriteLock(True)
         self._wbuf = self._headers
 
@@ -1596,9 +1590,11 @@ class WSConnection:
         Vuelve a iniciar la conexión a la Sala/PM
         """
         # with self._tlock:
+        self._reconnecting=True
         self._disconnect()
         self._reset()
         self.connect()
+        self._reconnecting=False
 
     def _rcmd_(self, pong=None):
         """Al recibir un pong"""
@@ -1610,8 +1606,8 @@ class WSConnection:
         self._wlock = False  # Bloquear el buffer de escritura
         self._wlockbuf = b''  # Buffer de escritura bloqueada
         self._firstCommand = False
-        self._tlock = threading.Lock()
-        self._connlock = threading.Lock()  # TODO delete lock
+        # self._tlock = threading.Lock()
+        # self._connlock = threading.Lock()  # TODO delete lock
         self._mods = dict()
 
 
@@ -1697,6 +1693,7 @@ class CHConnection(WSConnection):
 
     def disconnect(self):
         """Desconección completa de una sala"""
+        self._reconnecting=False
         self._disconnect()
         if not isinstance(self, PM):
             if self.mgr and self in self.mgr.rooms:
