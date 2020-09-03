@@ -656,7 +656,7 @@ class WS:
         lineas.extend(('--%s--' % boundary, '',))
         body = '\r\n'.join(lineas)
         headers = {
-            'Content-Type': 'multipart/form-data; boundary=%s' % boundary,
+            'Content-Type':   'multipart/form-data; boundary=%s' % boundary,
             'Content-Length': str(len(body))
         }
         return body, headers
@@ -1495,7 +1495,13 @@ class WSConnection:
         func = "_rcmd_" + cmd
         if hasattr(self, func):
             try:
-                getattr(self, func)(args)
+                event_function = getattr(self, func)
+                function_name = "_process_" + event_function.__name__
+                data_thread = threading.Thread(
+                    target=event_function, name=function_name, args=(args,)
+                )
+                data_thread.daemon = True
+                data_thread.start()
             except Exception as e:
                 self._callEvent('onProcessError', func, e)
                 print('[%s][%s] ERROR ON PROCESS "%s" "%s"' % (
@@ -3632,7 +3638,6 @@ class Gestor:
     def stop(self):
         """Detiene al bot"""
         self._running = False
-        self.onStop()
 
     def enableBg(self, activo=True):
         """Enable background if available."""
@@ -4170,11 +4175,12 @@ class Gestor:
         @param error: Error de conexion que ocasionó la perdida
         @type error: Exception
         """
-        print(
-            "[{}][{}]: Conexión perdida, reintentando...[{}] ".format(
-                room,
-                time.strftime(
-                    '%I:%M:%S %p'), error), file=sys.stderr)
+        print("[{}][{}]: Conexión perdida, reintentando...[{}] ".format(
+            room,
+            time.strftime('%I:%M:%S %p'),
+            error),
+            file=sys.stderr
+        )
 
     def onConnectionAttempt(self, room, error):
         """
@@ -4186,7 +4192,8 @@ class Gestor:
         print('[{}][{}][{:^5}] Aún no hay internet.[{}]'.format(
             time.strftime('%I:%M:%S %p'),
             room,
-            room._connectattempts, error),
+            room.attempts,
+            error),
             file=sys.stderr)
 
     def onPremiumChange(self, room, user):

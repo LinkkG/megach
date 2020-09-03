@@ -29,19 +29,27 @@ class Config:
     """
     Variables generales para configuración.
     """
+
+    # Nombres para llamar al bot.
     botnames = 'e15 examplebot boteto'.lower().split()
-    # Dueños, Solo minúsculas
-    owners = ['megamaster12', 'linkkg', 'milton797']
-    # Uno o más prefijos separados por espacio
+
+    # Dueños, Solo minúsculas.
+    owners = 'megamaster12 linkkg milton797'.lower().split()
+
+    # Uno o más prefijos separados por espacio.
     prefijos = '% $'.split()
-    # Ruta para el archivo simi
+
+    # Ruta para el archivo simi.
     rutasim = os.path.join(os.getcwd(), 'simi.json')
+
     # Lista de cuentas, la primera se usa como principal.
     accounts = [('Account1', 'Pass1'),
                 ('Cuenta2', 'Clave2')]
-    # Inicia el pm o no
+
+    # Inicia el pm o no.
     pm = True
-    # Lista de salas a las que unirse
+
+    # Lista de salas a las que unirse.
     rooms = ['pythonrpg']
 
 
@@ -74,7 +82,7 @@ class MiBot(megach.Gestor):
             nick = '@' + user
             channels_dict = {
                 32768: "MOD", 256: "RED", 0: "NORMAL",
-                2048: "BLUE", 2304: "BLUE+RED"
+                2048:  "BLUE", 2304: "BLUE+RED"
             }
             ubic = "".join(channels_dict.get(message.channel, "UNK"))
 
@@ -304,7 +312,7 @@ class Simi:
             return False
         archivo = open(archivo, 'a', encoding='utf-8')
         clave, valor = texto.split(':', 1)
-        clave = clave if clave.startswith(("https:", "http")) else clave.title()
+        valor = valor if valor.startswith(("https", "http")) else valor.capitalize()
         archivo.write('%s:%s' % (clave, valor + '\n'))
         return True
 
@@ -370,10 +378,10 @@ class Simi:
 
 
 try:
-    # bot = Mibot.easy_start(['pythonrpg'], USERNAME,PASSWORD ,pm= True) #
+    # bot = Mibot.easy_start(Config.rooms, USERNAME, PASSWORD, pm=True) #
     # También es válido así
     bot = MiBot.easy_start(
         Config.rooms, pm=Config.pm, accounts=Config.accounts
     )
-except Exception as error:  # En caso de que no haya internet
+except Exception as error:  # En caso de que no suceda algún error.
     print("Error en easy_start:", error)
