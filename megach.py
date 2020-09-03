@@ -58,10 +58,10 @@ sv8 = 101
 sv10 = 110
 sv12 = 116
 
-specials = {'mitvcanal': 56, 'animeultimacom': 34, 'cricket365live': 21, 'pokemonepisodeorg': 22, 'animelinkz': 20,
-            'sport24lt': 56, 'narutowire': 10, 'watchanimeonn': 22, 'cricvid-hitcric-': 51, 'narutochatt': 70,
-            'leeplarp': 27, 'stream2watch3': 56, 'ttvsports': 56, 'ver-anime': 8, 'vipstand': 21, 'eafangames': 56,
-            'soccerjumbo': 21, 'myfoxdfw': 67, 'kiiiikiii': 21, 'de-livechat': 5, 'rgsmotrisport': 51,
+specials = {'mitvcanal':     56, 'animeultimacom': 34, 'cricket365live': 21, 'pokemonepisodeorg': 22, 'animelinkz': 20,
+            'sport24lt':     56, 'narutowire': 10, 'watchanimeonn': 22, 'cricvid-hitcric-': 51, 'narutochatt': 70,
+            'leeplarp':      27, 'stream2watch3': 56, 'ttvsports': 56, 'ver-anime': 8, 'vipstand': 21, 'eafangames': 56,
+            'soccerjumbo':   21, 'myfoxdfw': 67, 'kiiiikiii': 21, 'de-livechat': 5, 'rgsmotrisport': 51,
             'dbzepisodeorg': 10, 'watch-dragonball': 8, 'peliculas-flv': 69}
 tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
              ["17", w12], ["18", w12], ["9", sv2], ["11", sv2], ["12", sv2],
@@ -84,7 +84,7 @@ def _checkonline(web="http://chatango.com"):
     # TODO unir con RPOSt y borrar este def
     host = web.split("/")[-1]
     request = urlreq.Request(web, method='HEAD', headers={
-        "Host": host,
+        "Host":       host,
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:79.0) Gecko/20100101 Firefox/79.0"
     })
     c = False
@@ -157,7 +157,7 @@ GroupFlags = {
     "CLOSED_IF_NO_MODS":  131072, "IS_CLOSED": 262144,
     "SHOW_MOD_ICONS":     524288, "MODS_CHOOSE_VISIBLITY": 1048576,
     "HAS_XML":            268435456, "UNSAFE": 536870912
-    }
+}
 
 ModFlags = {
     'DELETED':          1, 'EDIT_MODS': 2, 'EDIT_MOD_VISIBILITY': 4,
@@ -173,12 +173,12 @@ AdminFlags = (ModFlags["EDIT_MODS"] | ModFlags["EDIT_RESTRICTIONS"] |
               ModFlags["EDIT_GROUP"] | ModFlags["EDIT_GP_ANNC"])
 
 Fonts = {
-    'arial': 0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4,
+    'arial':    0, 'comic': 1, 'georgia': 2, 'handwriting': 3, 'impact': 4,
     'palatino': 5, 'papirus': 6, 'times': 7, 'typewriter': 8
 }
 
 MessageFlags = {
-    'IS_PREMIUM': 4, 'HAS_BG': 8, 'BADGE_SHIELD': 64, 'BADGE_STAFF': 128,
+    'IS_PREMIUM':  4, 'HAS_BG': 8, 'BADGE_SHIELD': 64, 'BADGE_STAFF': 128,
     'CHANNEL_RED': 256, 'CHANNEL_BLUE': 2048, 'CHANNEL_MOD': 32768
 }
 
@@ -1399,26 +1399,23 @@ class WSConnection:
         while self._connected or self._reconnecting:
             time.sleep(0.01)
             try:
-                if not self._sock:
-                    continue
                 self._ping()
-                rd, wr, sp = select.select(
-                    [self._sock], (self._wbuf and [self._sock] or []), [self._sock], 0.0
-                )
-                for x in wr:
-                    try:
-                        with self._tlock:
+                with self._tlock:
+                    if not self._sock:
+                        continue
+                    rd, wr, sp = select.select([self._sock], (self._wbuf and [self._sock] or []), [self._sock], 0.0)
+                    for x in wr:
+                        try:
                             size = self._sock.send(self._wbuf)
                             self._wbuf = self._wbuf[size:]
-                    except Exception as e:
-                        if debug:
-                            print("Error sock.send " + str(e), sys.stderr)
+                        except Exception as e:
+                            if debug:
+                                print("Error sock.send " + str(e), sys.stderr)
                 for x in rd:
-
                     chunk = None
-                    # with self._tlock:
-                    if self._sock:
-                        chunk = self._sock.recv(1024)
+                    with self._tlock:
+                        if self._sock:
+                            chunk = self._sock.recv(1024)
 
                     if chunk:
                         self.onData(chunk)
@@ -1588,11 +1585,11 @@ class WSConnection:
         Vuelve a iniciar la conexión a la Sala/PM
         """
         # with self._tlock:
-        self._reconnecting=True
+        self._reconnecting = True
         self._disconnect()
         self._reset()
         self.connect()
-        self._reconnecting=False
+        self._reconnecting = False
 
     def _rcmd_(self, pong=None):
         """Al recibir un pong"""
@@ -1691,7 +1688,7 @@ class CHConnection(WSConnection):
 
     def disconnect(self):
         """Desconección completa de una sala"""
-        self._reconnecting=False
+        self._reconnecting = False
         self._disconnect()
         if not isinstance(self, PM):
             if self.mgr and self in self.mgr.rooms:
@@ -1850,7 +1847,7 @@ class PM(CHConnection):
         @return: auid
         """
         data = {
-            "user_id": name, "password": password, "storecookie": "on",
+            "user_id":     name, "password": password, "storecookie": "on",
             "checkerrors": "yes"
         }
         resp = WS.RPOST("http://chatango.com/login", data)
@@ -2679,8 +2676,8 @@ class Room(CHConnection):
         title = title or self._info[0]
         info = info or self._info[1]
         data = {
-            "erase": 0, "l": 1, "d": info, "n": title, "u": self.name,
-            "lo": self._currentaccount[0], "p": self._currentaccount[1],
+            "erase":  0, "l": 1, "d": info, "n": title, "u": self.name,
+            "lo":     self._currentaccount[0], "p": self._currentaccount[1],
             "origin": "st.chatango.com",
         }
         if WS.RPOST("http://chatango.com/updategroupprofile", data):
@@ -2735,8 +2732,8 @@ class Room(CHConnection):
         """
         # TODO get default values before
         data = {
-            "lo": self._currentaccount[0], "p": self._currentaccount[1],
-            "bgc": bgc, "ialp": ialp, "useimg": useimg, "bgalp": bgalp,
+            "lo":    self._currentaccount[0], "p": self._currentaccount[1],
+            "bgc":   bgc, "ialp": ialp, "useimg": useimg, "bgalp": bgalp,
             "align": align, "isvid": isvid, "tile": tile, 'hasrec': '0'
         }
         headers = None
@@ -2783,9 +2780,9 @@ class Room(CHConnection):
         # TODO eliminar la variable **kw
         # TODO Evitar vaciar lo que no se manda
         data = {
-            'u': self._currentaccount[0], 'p': self._currentaccount[1],
+            'u':    self._currentaccount[0], 'p': self._currentaccount[1],
             'auth': 'pwd', 'arch': 'h5', 'src': 'group', 'action': 'update',
-            'age': age, 'gender': gender, 'location': country, 'line': about
+            'age':  age, 'gender': gender, 'location': country, 'line': about
         }
         data.update(**kw)
         headers = {}
