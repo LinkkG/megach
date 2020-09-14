@@ -2999,7 +2999,7 @@ class Room(CHConnection):
         target = args[2] and User(args[2]) or ''
         user = User(args[3])
         if not target:
-            msx = [msg for msg in self._history if msg.unid == args[0]]
+            msx = [msg for msg in self.history if msg.unid == args[0]]
             target = msx and msx[0].user or User('ANON')
             self._callEvent('onAnonBan', user, target)
         else:
@@ -3044,13 +3044,13 @@ class Room(CHConnection):
     def _rcmd_delete(self, args):
         """Borrar un mensaje de mi vista actual"""
         msg = self._msgs.get(args[0])
-        if msg and msg in self._history:
+        if msg and msg in self.history:
             self._history.remove(msg)
             self._callEvent("onMessageDelete", msg.user, msg)
             msg.detach()
         # Si hay menos de 20 mensajes pero el chat tiene más, por que no
         # pedirle otros tantos?
-        if len(self._history) < 20 and not self._nomore:
+        if len(self.history) < 20 and not self._nomore:
             self._sendCommand('get_more:20:0')
 
     def _rcmd_deleteall(self, args):
@@ -3059,7 +3059,7 @@ class Room(CHConnection):
         msgs = list()  # mensajes borrados
         for msgid in args:
             msg = self._msgs.get(msgid)
-            if msg and msg in self._history:
+            if msg and msg in self.history:
                 self._history.remove(msg)
                 user = msg.user
                 msg.detach()
@@ -3277,7 +3277,7 @@ class Room(CHConnection):
                     self._userhistory.append([contime, usr])
                 else:
                     self._userhistory.remove(
-                        [x for x in self._userhistory if x[1] == usr][0])
+                        [x for x in self._userhistory[:] if x[1] == usr][0])
                     self._userhistory.append([contime, usr])
             if user.isanon:
                 self._callEvent('onAnonLeave', user, puid)
@@ -3291,7 +3291,7 @@ class Room(CHConnection):
                 self._callEvent('onAnonJoin', user, puid)
             # Agregar la sesión a la sala
             self._userdict[ssid] = [contime, user]
-            lista = [x[1] for x in self._userhistory]
+            lista = [x[1] for x in self._userhistory[:]]
             if user in lista:
                 self._userhistory.remove(
                     [x for x in self._userhistory if x[1] == user][0])
@@ -3310,7 +3310,7 @@ class Room(CHConnection):
                     if before not in lista:
                         self._userhistory.append([contime, before])
                     else:
-                        lst = [x for x in self._userhistory if before == x[1]]
+                        lst = [x for x in self._userhistory[:] if before == x[1]]
                         if lst:
                             self._userhistory.remove(lst[0])
                         self._userhistory.append([contime, before])
