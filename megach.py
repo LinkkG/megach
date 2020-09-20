@@ -3277,7 +3277,7 @@ class Room(CHConnection):
                     self._userhistory.append([contime, usr])
                 else:
                     self._userhistory.remove(
-                        [x for x in self._userhistory[:] if x[1] == usr][0])
+                        [x for x in self._userhistory.copy() if x[1] == usr][0])
                     self._userhistory.append([contime, usr])
             if user.isanon:
                 self._callEvent('onAnonLeave', user, puid)
@@ -3291,7 +3291,7 @@ class Room(CHConnection):
                 self._callEvent('onAnonJoin', user, puid)
             # Agregar la sesión a la sala
             self._userdict[ssid] = [contime, user]
-            lista = [x[1] for x in self._userhistory[:]]
+            lista = [x[1] for x in self._userhistory.copy()]
             if user in lista:
                 self._userhistory.remove(
                     [x for x in self._userhistory if x[1] == user][0])
@@ -3310,7 +3310,7 @@ class Room(CHConnection):
                     if before not in lista:
                         self._userhistory.append([contime, before])
                     else:
-                        lst = [x for x in self._userhistory[:] if before == x[1]]
+                        lst = [x for x in self._userhistory.copy() if before == x[1]]
                         if lst:
                             self._userhistory.remove(lst[0])
                         self._userhistory.append([contime, before])
