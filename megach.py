@@ -41,7 +41,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuration
 ################################################################
-version = 'M.1.7.6'
+version = 'M.1.7.7'
 version_info = version.split('.')
 debug = True
 autoupdate = True  # for special servers and tsweights
@@ -3583,6 +3583,8 @@ class Gestor:
                 print("[{0}][{1}] El servidor de la sala no responde".format(
                     time.strftime('%I:%M:%S %p'), room), file=sys.stderr)
                 # TODO usar evento de sala cuando el server no responde
+            except Exception as fallo2:
+                print(f"[{time.strftime('%I:%M:%S %p')}][{room}] {fallo2}", file=sys.stderr)
 
     def leaveRoom(self, room):
         if isinstance(room, Room):
