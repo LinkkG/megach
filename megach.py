@@ -1311,7 +1311,7 @@ class WSConnection:
         self._firstCommand = True  # Si es el primer comando enviado
         self._headers = b''  # Las cabeceras que se enviaron en la petición
         self._origin = origin or server
-        self._port = port or 443  # El puerto de la conexión
+        self._port = port or 8080  # El puerto de la conexión
         self._server = server
         self._name = name
         self._serverheaders = b''  # Las caberceras de respuesta recibidas
@@ -1364,6 +1364,7 @@ class WSConnection:
             if not self._connected:
                 self._connectattempts += 1
                 self._sock = socket.socket()
+                print(self._server)
                 self._sock.connect((self._server, self._port))
                 self._sock.setblocking(False)
                 self._handShake()
@@ -1641,7 +1642,7 @@ class CHConnection(WSConnection):
 
     def __init__(self, mgr, name, server, account):
         # Ports 8080 and 8081 ar http, 443 is https
-        super().__init__(server, 8080, 'http://st.chatango.com', name)
+        super().__init__(server, 8080, 'https://st.chatango.com', name)
         self._bgmode = 0
         self._currentaccount = account
         self._currentname = account and account[
@@ -1717,16 +1718,12 @@ class CHConnection(WSConnection):
                 # partir el mensaje en pedacitos y formatearlos por separado
                 espacios = msg.count(' ') + msg.count('\t')
                 particion = self.MAXLEN
-                conteo = 0
                 while espacios * 6 + particion > self.MAXLEN:
                     particion = len(
                         msg[:particion - espacios])  # Recorrido máximo 5
                     espacios = msg[:particion].count(' ') + msg[
                                                             :particion].count(
                         '\t')
-                    conteo += 1
-                if debug:  # TODO eliminar
-                    print(conteo)
                 return self._messageFormat(msg[:particion],
                                            html) + self._messageFormat(
                     msg[particion:], html)
@@ -2171,7 +2168,7 @@ class Room(CHConnection):
         self._mods = dict()
         self._msgs = dict()  # TODO esto y history es lo mismo?
         self._nameColor = ''
-        self._port = 443  # TODO cambio a 8080 si no está disponible
+        self._port = 8081  # TODO cambio a 8080 si no está disponible
         self._rbuf = b''
         self._connectiontime = 0
         self._recording = 0
@@ -3342,8 +3339,7 @@ class Room(CHConnection):
                 msg.user._nameColor = msg.nameColor
             msg.attach(self, args[1])
             self._addHistory(msg)
-            if (msg.channel & ModChannels or msg.badge) and msg.user not in [
-                self.owner] + list(self.mods):  # TODO reducir
+            if (msg.channel & ModChannels) and msg.user not in [self.owner] + list(self.mods):
                 self._mods[msg.user] = self._parseFlags('0', ModFlags)
                 self._mods[msg.user].isadmin = False
             msg.user.history = msg
@@ -3877,10 +3873,22 @@ class Gestor:
         """
         pass
 
-    def onJoin(self, room, user, ssid):  # TODO comentar
+    def onJoin(self, room, user, ssid):
+        """
+        Al salir un usuario de la sala
+        param room: Sala que se abandona
+        param user: Usuario que se une
+        param ssid: Session id for the leaving user
+        """
         pass
 
-    def onLeave(self, room, user, ssid):  # TODO comentar
+    def onLeave(self, room, user, ssid):
+        """
+        Al salir un usuario de la sala
+        param room: Sala que se abandona
+        param user: Usuario que la abandona
+        param ssid: Session id for the leaving user
+        """
         pass
 
     def onLogin(self, room, user):
