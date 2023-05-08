@@ -32,6 +32,7 @@ import urllib.request as urlreq
 from collections import deque, namedtuple
 from datetime import datetime
 from typing import List, Tuple, Union
+from functools import wraps
 from urllib.error import HTTPError, URLError
 from xml.etree import cElementTree as ET
 
@@ -87,11 +88,16 @@ tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
              ["81", sv12], ["82", sv12], ["83", sv12], ["84", sv12]]
 
 
+deprecated_logs=[]
 def deprecated(new_one='', old_one=''):
     def decorator(function):
+        @wraps(function)
         def wrapper(*args, **kwargs):
             viejo = old_one or function.__name__
             nuevo = new_one or function.__name__
+            if viejo in deprecated_logs:
+                return function(*args, **kwargs)
+            deprecated_logs.append(viejo)
             logging.warning(
                 f'Deprecated function: "{viejo}". Please change to "{nuevo}" instead'
             )
@@ -145,9 +151,9 @@ def updateServers():
             with open(route, 'w') as file:
                 file.write(json.dumps(dic))
     except ModuleNotFoundError as e1:
-        print("External module not found, please search for update_servers.py", file=sys.stderr)
+        logging.warning("External module not found, please search for update_servers.py" )#file=sys.stderr)
     except Exception as e:
-        print('' + str(e))
+        logging.error('' + str(e))
     return updated
 
 
@@ -224,7 +230,7 @@ def _savelog(message):
         with open(os.path.join(path, 'megach.log'), 'a') as f:
             f.writelines(str(message) + '\n')
     except Exception as e:
-        print('Error al guardar log: ' + str(e), file=sys.stderr)
+        logging.error('Error al guardar log: ' + str(e), file=sys.stderr)
 
 
 def _genUid() -> str:
@@ -487,7 +493,7 @@ class Task:
                     else:
                         task.cancel()
             except Exception as e:
-                print("Task error {}: {}".format(task.func, e))
+                logging.error("Task error {}: {}".format(task.func, e))
                 task.cancel()
         if not Task._INSTANCES:
             with Task._LOCK:
@@ -1253,11 +1259,11 @@ class Message:
             flash = channel & 16 > 0  # TODO asignar a user|message
             banword = channel & 32 > 0  # TODO asignar a message
             if debug and (channel & 3):
-                print(
+                logging.debug(
                     '[_rcmd_b][' + ':'.join(
                         args) + ']Encontrado un dato desconocido, '
                                 'favor avisar al '
-                                'desarrollador', file=sys.stderr)
+                                'desarrollador') #file=sys.stderr)
                 _savelog('[_rcmd_b][' + ':'.join(args) + ']')
                 # TODO Descubrir y manupular canales 1|2 (3) y 16|32(48)
             channel = ((channel & 2048) | (channel & 256)) | (channel & 35072)
@@ -1359,7 +1365,8 @@ class WSConnection:
                 self.mgr.onEventCalled(self, evt, *args, **kw)
             elif self.mgr and hasattr(self.mgr, evt):
                 getattr(self.mgr, evt)(self, *args, **kw)
-                self.mgr.onEventCalled(self, evt, *args, **kw)
+                self.mgr.on_event_called(Struct(room=self, evt = evt, args=args, kw=kw))
+                #self.mgr.onEventCalled(self, evt, *args, **kw)
             elif self.mgr:
                 print('Evento no controlado ' + str(evt))
         except Exception as e:
@@ -2426,7 +2433,7 @@ class Room(CHConnection):
     @property
     def userCount(self):
         """Cantidad de usuarios en la sala"""
-        if self.flags.NOCOUNTER:
+        if self.flags and self.flags.NOCOUNTER:
             return len(self.userlist)
         else:
             return self._usercount
@@ -3981,6 +3988,18 @@ class Gestor:
         print("ONMESSAGE EXISTE WEY")
         pass
 
+    @deprecated(old_one='onEventCalled')
+    def on_event_called(self, context):
+        """
+        Called on every room-based event.
+        @type room: Room
+        @param room: room where the event occured
+        @type evt: str
+        @param evt: the event
+        """
+        self.onEventCalled(context.room, context.evt, *context.args, **context.kw)
+        pass
+
     @deprecated(old_one='onMessage')
     def on_message(self, context):
         """
@@ -4259,7 +4278,7 @@ class Gestor:
         @param error: Error que ocasiona el fallo de conexión
         @type error: Exception
         """
-        print('[{}][{}][{:^5}] Aún no hay internet.[{}]'.format(
+        logging.warning('[{}][{}][{:^5}] Aún no hay internet.[{}]'.format(
             time.strftime('%I:%M:%S %p'),
             room,
             room.attempts,
