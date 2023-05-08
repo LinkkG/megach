@@ -3558,7 +3558,7 @@ class Gestor:
         return self._rooms.get(room.lower())
 
     @deprecated(new_one="join_room")
-    def joinRoomm(self,*args,**kwargs):
+    def joinRoom(self,*args,**kwargs):
         return self.join_room(*args,**kwargs)
 
     def join_room(self, room: str, account=None):
