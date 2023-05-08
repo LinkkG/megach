@@ -2168,7 +2168,7 @@ class Room(CHConnection):
         # Datos del chat
         self._announcement = [0, 0, '']  # Estado, Tiempo, Texto
         self._banlist = dict()  # Lista de usuarios baneados
-        self._flags = None
+        self._flags = self._parseFlags(0, GroupFlags) # Fix para flags no disponibles
 
         self._mqueue = dict()
         self._mods = dict()
