@@ -1311,6 +1311,7 @@ class WSConnection:
         self._correctiontime = 0  # Diferencia entre localtime y servertime
         self._connectattempts = 0
         self._connected = False
+        self._reconnecting = False
         self._firstCommand = True  # Si es el primer comando enviado
         self._headers = b''  # Las cabeceras que se enviaron en la petición
         self._origin = origin or server
