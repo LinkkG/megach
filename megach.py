@@ -29,8 +29,9 @@ import threading
 import time
 import urllib.parse as urlparse
 import urllib.request as urlreq
-from collections import namedtuple, deque
+from collections import deque, namedtuple
 from datetime import datetime
+from typing import List, Tuple, Union
 from urllib.error import HTTPError, URLError
 from xml.etree import cElementTree as ET
 
@@ -42,7 +43,7 @@ if sys.version_info[1] < 5:
 ################################################################
 # Depuration
 ################################################################
-version = 'M.1.7.8'
+version = 'M.1.7.9'
 version_info = version.split('.')
 debug = True
 autoupdate = True  # for special servers and tsweights
@@ -60,11 +61,15 @@ sv8 = 101
 sv10 = 110
 sv12 = 116
 
-specials = {'mitvcanal':     56, 'animeultimacom': 34, 'cricket365live': 21, 'pokemonepisodeorg': 22, 'animelinkz': 20,
-            'sport24lt':     56, 'narutowire': 10, 'watchanimeonn': 22, 'cricvid-hitcric-': 51, 'narutochatt': 70,
-            'leeplarp':      27, 'stream2watch3': 56, 'ttvsports': 56, 'ver-anime': 8, 'vipstand': 21, 'eafangames': 56,
-            'soccerjumbo':   21, 'myfoxdfw': 67, 'kiiiikiii': 21, 'de-livechat': 5, 'rgsmotrisport': 51,
-            'dbzepisodeorg': 10, 'watch-dragonball': 8, 'peliculas-flv': 69}
+specials = {
+    'mitvcanal': 56, 'animeultimacom': 34, 'cricket365live': 21, 'pokemonepisodeorg': 22,
+    'animelinkz': 14, 'sport24lt':     56, 'narutowire': 10, 'watchanimeonn': 22,
+    'cricvid-hitcric-': 51, 'narutochatt': 70, 'leeplarp': 27, 'stream2watch3': 56,
+    'ttvsports': 56, 'ver-anime': 8, 'vipstand': 21, 'eafangames': 56,
+    'soccerjumbo':   21, 'myfoxdfw': 67, 'kiiiikiii': 21, 'de-livechat': 5,
+    'rgsmotrisport': 51, 'dbzepisodeorg': 10, 'watch-dragonball': 8, 'peliculas-flv': 69
+}
+
 tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
              ["17", w12], ["18", w12], ["9", sv2], ["11", sv2], ["12", sv2],
              ["13", sv2], ["14", sv2], ["15", sv2], ["19", sv4], ["23", sv4],
@@ -81,23 +86,28 @@ tsweights = [['5', w12], ['6', w12], ['7', w12], ['8', w12], ['16', w12],
              ["77", sv12], ["78", sv12], ["79", sv12], ["80", sv12],
              ["81", sv12], ["82", sv12], ["83", sv12], ["84", sv12]]
 
+
 def deprecated(new_one='', old_one=''):
     def decorator(function):
         def wrapper(*args, **kwargs):
             viejo = old_one or function.__name__
             nuevo = new_one or function.__name__
-            logging.warning(f'Deprecated function: "{viejo}". Please change to "{nuevo}" instead')
+            logging.warning(
+                f'Deprecated function: "{viejo}". Please change to "{nuevo}" instead'
+            )
             return function(*args, **kwargs)
         return wrapper
     return decorator
 
+
 def _check_online(web="http://chatango.com"):
     """ Comprueba si una web está online y regresa un bool """
     try:
-        r = WS.request(web, method = 'HEAD')
+        r = WS.request(web, method='HEAD')
         return r.status == 200
     except Exception as e:
         return False
+
 
 def updatePath():
     """Get this module's directory and appends to path"""
@@ -254,7 +264,9 @@ def convertPM(msg: str) -> str:
     @param msg: Mensaje con fuentes incrustadas
     @return: Mensaje con etiquetas f convertidas a g
     """
-    pattern = re.compile(r'<f x(\d{1,2})?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})=(.*?)>')
+    pattern = re.compile(
+        r'<f x(\d{1,2})?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})=(.*?)>'
+    )
 
     def repl(match):
         s, c, f = match.groups()
@@ -324,7 +336,7 @@ def getServerNumber(group: str) -> int:
 # Cosas de los mensajes y los canales
 ################################################################
 
-def _clean_message(msg: str, pm: bool = False) -> [str, str, str]:
+def _clean_message(msg: str, pm: bool = False) -> Union[str, str, str]:
     """
     Clean a message and return the message, n tag and f tag.
     @type msg: str
@@ -371,7 +383,7 @@ def _strip_html(msg: str) -> str:
         return "".join(ret)
 
 
-def _parse_font(f: str, pm=False) -> (str, str, str):
+def _parse_font(f: str, pm=False) -> Tuple[str, str, str]:
     """
     Lee el contendido de un etiqueta f y regresa
     tamaño color y fuente (en ese orden)
@@ -401,7 +413,8 @@ def _font_format(text):
     for f in formats:
         f1, f2 = set(formats.keys()) - {f}
         # find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[\S]){2}'.format(f1, f2, f+'{1}')
-        find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[\S]?[{2}]?){2}[{0}{1}]?[\s]'.format(f1, f2, f)
+        find = ' <?[BUI]?>?[{0}{1}]?{2}(.+?[\S]?[{2}]?){2}[{0}{1}]?[\s]'.format(
+            f1, f2, f)
         for x in re.findall(find, ' ' + text + ' '):
             original = f[-1] + x + f[-1]
             cambio = '<' + formats[f] + '>' + x + '</' + formats[f] + '>'
@@ -652,7 +665,7 @@ class WS:
                 mimetype = valor['mimetype']
             else:
                 mimetype = mimetypes.guess_type(filename)[
-                               0] or 'application/octet-stream'
+                    0] or 'application/octet-stream'
             lineas.extend(('--%s' % boundary,
                            'Content-Disposition: form-data; name="%s"; '
                            'filename="%s"' % (
@@ -771,7 +784,7 @@ class WS:
                 'origin': 'http://st.chatango.com',
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:79.0) Gecko/20100101 Firefox/79.0'
             }
-        pet = urlreq.Request(url, data = data, headers = headers, method = method)
+        pet = urlreq.Request(url, data=data, headers=headers, method=method)
         try:
             resp = urlreq.urlopen(pet)
             return resp
@@ -780,7 +793,7 @@ class WS:
         except URLError as e:
             raise
         except Exception as e:
-            raise # TODO no controlada
+            raise  # TODO no controlada
 
 
 class User:
@@ -809,7 +822,7 @@ class User:
         self = super().__new__(cls)
         cls._users[key] = self
         self._info = None
-        ## Estilos del usuario
+        # Estilos del usuario
         self._style = None
         self._fontColor = self.style.textColor or '000'
         self._fontFace = self.style.fontFamily or '000'
@@ -820,7 +833,8 @@ class User:
         self._isanon = not len(name) or name[0] in '!#'
         self._ispremium = None
         self._mbg = False
-        self._history = deque(maxlen=5)  # TODO Mantener historial reciente de un usuario
+        # TODO Mantener historial reciente de un usuario
+        self._history = deque(maxlen=5)
         self._mrec = False
         self._name = key
         self._puids = dict()
@@ -907,7 +921,7 @@ class User:
         """Color del nombre en formato html para chatango(hex3 compatible con PM)"""
         return '<n%s/>' % (
             self.nameColor[::2] if len(self.nameColor) == 6 else self.nameColor[
-                                                                 :3])
+                :3])
 
     @property
     def showname(self) -> str:
@@ -938,7 +952,9 @@ class User:
         misxml = []
         for x in urls:
             try:
-                misxml.append(ET.fromstring(urlreq.urlopen(x).read().decode('latin-1')))
+                misxml.append(ET.fromstring(
+                    urlreq.urlopen(x).read().decode('latin-1')
+                ))
             except:
                 misxml.append(None)
         buscar = 'body s b l d'
@@ -960,8 +976,8 @@ class User:
     @property
     def about(self):
         return self.info.about and \
-               _clean_message(urlreq.unquote(self.info.about))[
-                   0] or None
+            _clean_message(urlreq.unquote(self.info.about))[
+                0] or None
 
     @property
     def country(self):
@@ -1338,9 +1354,9 @@ class WSConnection:
 
     def _callEvent(self, evt, *args, **kw):
         try:
-            if evt=="on_message":
-                getattr(self.mgr, evt)(*args,**kw)
-                self.mgr.onEventCalled(self, evt,*args,**kw)
+            if evt == "on_message":
+                getattr(self.mgr, evt)(*args, **kw)
+                self.mgr.onEventCalled(self, evt, *args, **kw)
             elif self.mgr and hasattr(self.mgr, evt):
                 getattr(self.mgr, evt)(self, *args, **kw)
                 self.mgr.onEventCalled(self, evt, *args, **kw)
@@ -1410,7 +1426,12 @@ class WSConnection:
                 with self._tlock:
                     if not self._sock:
                         continue
-                    rd, wr, sp = select.select([self._sock], (self._wbuf and [self._sock] or []), [self._sock], 0.0)
+                    rd, wr, sp = select.select(
+                        [self._sock],
+                        (self._wbuf and [self._sock] or []),
+                        [self._sock],
+                        0.0
+                    )
                     for x in wr:
                         try:
                             size = self._sock.send(self._wbuf)
@@ -1450,7 +1471,8 @@ class WSConnection:
                     while not _check_online():
                         # No internet or chatango fails here
                         self._connectattempts += 1
-                        self._callEvent('onConnectionAttempt', 'NO INTERNET or CHATANGO DOWN')
+                        self._callEvent('onConnectionAttempt',
+                                        'NO INTERNET or CHATANGO DOWN')
                         attempts += 1
                         time.sleep(10)
                 while attempts:
@@ -1513,7 +1535,7 @@ class WSConnection:
                 self._callEvent('onProcessError', func, e)
                 print('[%s][%s] ERROR ON PROCESS "%s" "%s"' % (
                     time.strftime('%I:%M:%S %p'), self.name, func, e),
-                      file=sys.stderr)
+                    file=sys.stderr)
         elif debug:
             print('[{}][{:^10.10}]UNKNOWN DATA "{}"'.format(
                 time.strftime('%I:%M:%S %p'), self.name, ':'.join(data)),
@@ -1728,7 +1750,7 @@ class CHConnection(WSConnection):
                     particion = len(
                         msg[:particion - espacios])  # Recorrido máximo 5
                     espacios = msg[:particion].count(' ') + msg[
-                                                            :particion].count(
+                        :particion].count(
                         '\t')
                 return self._messageFormat(msg[:particion],
                                            html) + self._messageFormat(
@@ -1859,7 +1881,7 @@ class PM(CHConnection):
             "user_id":     name, "password": password, "storecookie": "on",
             "checkerrors": "yes"
         }
-        resp = WS.request("http://chatango.com/login", data, method = 'POST')
+        resp = WS.request("http://chatango.com/login", data, method='POST')
         if not resp:
             return None
         for header, value in resp.headers.items():
@@ -2082,7 +2104,9 @@ class PM(CHConnection):
         """
         Estado de usuarios con charlas recientes
         """
-        self._status[User.get(args[0])] = [args[1], args[2] in 'onlineapp', args[1]]
+        self._status[User.get(args[0])] = [
+            args[1], args[2] in 'onlineapp', args[1]
+        ]
 
     def _rcmd_track(self, args):  # TODO completar _track
         # print("track "+str(args))
@@ -2164,11 +2188,13 @@ class Room(CHConnection):
         self._badge = 0
         self._channel = 0
         self._currentaccount = account or ('', '')
+        self._currentUserIsMod = False
 
         # Datos del chat
         self._announcement = [0, 0, '']  # Estado, Tiempo, Texto
         self._banlist = dict()  # Lista de usuarios baneados
-        self._flags = self._parseFlags(0, GroupFlags) # Fix para flags no disponibles
+        # Fix para flags no disponibles
+        self._flags = self._parseFlags(0, GroupFlags)
 
         self._mqueue = dict()
         self._mods = dict()
@@ -2358,6 +2384,11 @@ class Room(CHConnection):
         return sorted([x.name for x in self.mods], key=lambda s: s.lower())
 
     @property
+    def currentUserIsMod(self):
+        """Verifica si el usuario bot tiene poderes mod"""
+        return self._currentUserIsMod
+
+    @property
     def msgs(self):
         return self._msgs
 
@@ -2443,7 +2474,7 @@ class Room(CHConnection):
                   anons or not x[1].isanon]
         elif type(memory) == int:
             ul = set(map(lambda x: x.user, list(self._history)[
-                                           min(-memory, len(self._history)):]))
+                min(-memory, len(self._history)):]))
         if unique:
             ul = set(ul)
         return sorted(list(ul), key=lambda x: x.name.lower())
@@ -2764,7 +2795,7 @@ class Room(CHConnection):
             headers.update({
                 "host": "chatango.com", "origin": "http://st.chatango.com"
             })
-        if WS.request("http://chatango.com/updatemsgbg", data, headers, method = 'POST'):
+        if WS.request("http://chatango.com/updatemsgbg", data, headers, method='POST'):
             self._sendCommand("miu")
             return True
         else:
@@ -2812,7 +2843,7 @@ class Room(CHConnection):
                 "host": "chatango.com", "origin": "http://st.chatango.com"
             })
         if WS.request("http://chatango.com/updateprofile", data,
-                    headers=headers, method = 'POST'):
+                      headers=headers, method='POST'):
             return True  # TODO comprobar resultado
         else:
             return False
@@ -2845,7 +2876,8 @@ class Room(CHConnection):
         data, headers = WS.encode_multipart(data, files)
         headers.update(
             {"host": "chatango.com", "origin": "http://st.chatango.com"})
-        res = WS.request("http://chatango.com/uploadimg", data, headers=headers, method='POST')
+        res = WS.request("http://chatango.com/uploadimg",
+                         data, headers=headers, method='POST')
         if res:
             res = res.read().decode('utf-8')
             if 'success' in res:
@@ -2947,7 +2979,7 @@ class Room(CHConnection):
         # TODO usar fuentes por defecto del usuario
         if self.owner != self.user and (
                 self.user not in self.mods or not self.modflags.get(
-            self.user.name).EDIT_GP_ANNC):
+                    self.user.name).EDIT_GP_ANNC):
             return False
         if anuncio is None:
             self._announcement[0] = int(enabled)
@@ -3161,7 +3193,7 @@ class Room(CHConnection):
                                  str(self._connectiontime))
         self._user = User(name,
                           nameColor=str(self._connectiontime).split('.')[0][
-                                    -4:])
+                              -4:])
         self._callEvent('onLogout', self._user, '?')  # TODO fail aqui
 
     def _rcmd_mods(self, args):
@@ -3178,6 +3210,7 @@ class Room(CHConnection):
         if (self.user not in pre and self.user in mods) or (tuser not in pre and tuser in mods):
             # Si el bot no estaba en los mods
             if self.user == tuser:
+                self._currentUserIsMod = self.getLevel(self.user.name) > 0
                 self._callEvent('onModAdd', self.user)
             return
 
@@ -3193,6 +3226,7 @@ class Room(CHConnection):
             privs = privs - {'MOD_ICON_VISIBLE', 'value'}  # Let's Ignore these
             if privs:  # ¿Are there changes?
                 self._callEvent('onModChange', user, privs)
+        self._currentUserIsMod = self.getLevel(self.user.name) > 0
 
     def _rcmd_miu(self, args):
         """Recarga la imagen y/o bg del usuario en cuestión"""
@@ -3247,6 +3281,7 @@ class Room(CHConnection):
                                                                      ModFlags)
                 self._mods[User(x.split(',')[0])].isadmin = int(
                     powers) & AdminFlags != 0
+            self._currentUserIsMod = self.getLevel(self.user.name) > 0
 
     def _rcmd_participant(self, args):
         """
@@ -3313,7 +3348,8 @@ class Room(CHConnection):
                     if before not in lista:
                         self._userhistory.append([contime, before])
                     else:
-                        lst = [x for x in self._userhistory.copy() if before == x[1]]
+                        lst = [x for x in self._userhistory.copy()
+                               if before == x[1]]
                         if lst:
                             self._userhistory.remove(lst[0])
                         self._userhistory.append([contime, before])
@@ -3349,7 +3385,8 @@ class Room(CHConnection):
                 self._mods[msg.user] = self._parseFlags('0', ModFlags)
                 self._mods[msg.user].isadmin = False
             msg.user.history = msg
-            self._callEvent("on_message", Struct(_name='Message Context',room=self, user=msg.user, message=msg))
+            self._callEvent("on_message", Struct(
+                _name='Message Context', room=self, user=msg.user, message=msg))
 
     def _rcmd_ubw(self, args):  # TODO palabas desbaneadas ?)
         self._ubw = args
@@ -3492,7 +3529,7 @@ class Gestor:
     @classmethod
     def easy_start(cls, rooms: list = None, name: str = '',
                    password: str = '', pm: bool = True,
-                   accounts: [(str, str), (str, str), ...] = None, **kwargs):
+                   accounts: Union[List[Tuple[str, str]], None] = None, **kwargs):
         """
         Inicio rápido del bot y puesta en marcha
         @param rooms: Una lista de salas
@@ -3513,7 +3550,7 @@ class Gestor:
         if not accounts:
             accounts = [(name, password)]
         self = cls(name, password, pm, accounts)
-        
+
         # Assign custom values
         for attr, val in kwargs.items():
             setattr(self, '_' + attr, val)
@@ -3559,8 +3596,8 @@ class Gestor:
         return self._rooms.get(room.lower())
 
     @deprecated(new_one="join_room")
-    def joinRoom(self,*args,**kwargs):
-        return self.join_room(*args,**kwargs)
+    def joinRoom(self, *args, **kwargs):
+        return self.join_room(*args, **kwargs)
 
     def join_room(self, room: str, account=None):
         """
@@ -3595,7 +3632,8 @@ class Gestor:
                     time.strftime('%I:%M:%S %p'), room), file=sys.stderr)
                 # TODO usar evento de sala cuando el server no responde
             except Exception as fallo2:
-                print(f"[{time.strftime('%I:%M:%S %p')}][{room}] {fallo2}", file=sys.stderr)
+                print(
+                    f"[{time.strftime('%I:%M:%S %p')}][{room}] {fallo2}", file=sys.stderr)
 
     def leaveRoom(self, room):
         if isinstance(room, Room):
@@ -3623,7 +3661,8 @@ class Gestor:
                     time.sleep(10)
 
             self.onInit()
-            self._jt = threading.Thread(target=self._joinThread, name="Join rooms")
+            self._jt = threading.Thread(
+                target=self._joinThread, name="Join rooms")
             self._jt.daemon = True
             self._jt.start()
             while self._running:
@@ -3950,7 +3989,8 @@ class Gestor:
         @param user: Usuario que ha enviado (User)
         @param message: El mensaje enviado (Message)
         """
-        self.onMessage(context.room, context.message.user, context.message) # TODO remove this in v2.0
+        self.onMessage(context.room, context.message.user,
+                       context.message)  # TODO remove this in v2.0
 
     def onMessageDelete(self, room, user, message):
         """

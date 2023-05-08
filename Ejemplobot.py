@@ -184,10 +184,10 @@ class MiBot(megach.Gestor):
                             except Exception as e2:
 
                                 raise Exception(str(e2) + '---' + str(err) + (
-                                        str(e2) == str(
-                                    err) and 'son iguales' or 'no me '
-                                                              'salen '
-                                                              'igual :v'))
+                                    str(e2) == str(
+                                        err) and 'son iguales' or 'no me '
+                                    'salen '
+                                    'igual :v'))
                     if cmd in ['ex']:
                         room.message(str(exec(args)))
 
@@ -265,8 +265,7 @@ class MiBot(megach.Gestor):
             room.user,
             room.attempts,
             room.attempts > 1 and 's' or ''
-        )
-              )
+        ))
 
     def onPMConnect(self, pm):
         """Al conectarse al PM"""
@@ -276,8 +275,7 @@ class MiBot(megach.Gestor):
             pm.user,
             pm.attempts,
             pm.attempts > 1 and 's' or ''
-        )
-              )
+        ))
 
     def onReconnect(self, room):
         """
@@ -289,7 +287,7 @@ class MiBot(megach.Gestor):
             room,
             room.attempts,
             room.attempts > 1 and 's' or '')
-              )
+        )
 
     def onDisconnect(self, room):
         """Al desconectarse de una sala"""
@@ -312,7 +310,8 @@ class Simi:
             return False
         archivo = open(archivo, 'a', encoding='utf-8')
         clave, valor = texto.split(':', 1)
-        valor = valor if valor.startswith(("https", "http")) else valor.capitalize()
+        valor = valor if valor.startswith(
+            ("https", "http")) else valor.capitalize()
         archivo.write('%s:%s' % (clave, valor + '\n'))
         return True
 
