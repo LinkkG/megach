@@ -28,9 +28,12 @@ version = '1.5.4'
 class Config:
     """
     Variables generales para configuración.
+    Son accesibles desde cualquier lado usando el nombre de la clase
+    Ejemplos: Config.pm, Config.botnames, Config.rooms
     """
 
     # Nombres para llamar al bot.
+    # El split los convierte en un arreglo como esto=> ['e15','examplebot','boteto']
     botnames = 'e15 examplebot boteto'.lower().split()
 
     # Dueños, Solo minúsculas.
@@ -39,18 +42,19 @@ class Config:
     # Uno o más prefijos separados por espacio.
     prefijos = '% $'.split()
 
-    # Ruta para el archivo simi.
+    # Ruta/carpeta para el archivo simi.
+    # Si te creas un archivo simi.json al lado del bot, puedes usarlo para programar respuestas
     rutasim = os.path.join(os.getcwd(), 'simi.json')
 
     # Lista de cuentas, la primera se usa como principal.
     accounts = [('Account1', 'Pass1'),
                 ('Cuenta2', 'Clave2')]
 
-    # Inicia el pm o no.
+    # Inicia el "Private Messaging" o no.
     pm = True
 
     # Lista de salas a las que unirse.
-    rooms = ['pythonrpg']
+    rooms = ['realpython']
 
 
 class MiBot(megach.Gestor):
@@ -79,7 +83,9 @@ class MiBot(megach.Gestor):
     def onMessage(self, room, user, message):
         """Al recibir un mensaje en una sala"""
         try:
+            # Forma en que llamaremos al usuario por default, ejemplo: @megamaster12
             nick = '@' + user
+            # Canales posibles en que se puede mandar un mensaje
             channels_dict = {
                 32768: "MOD", 256: "RED", 0: "NORMAL",
                 2048:  "BLUE", 2304: "BLUE+RED"

@@ -1360,11 +1360,20 @@ class WSConnection:
 
     def _callEvent(self, evt, *args, **kw):
         try:
-            if evt == "on_message":
-                getattr(self.mgr, evt)(*args, **kw)
-                self.mgr.onEventCalled(self, evt, *args, **kw)
-            elif self.mgr and hasattr(self.mgr, evt):
+            if self.mgr and hasattr(self.mgr, evt):
                 getattr(self.mgr, evt)(self, *args, **kw)
+                self.mgr.on_event_called(Struct(room=self, evt = evt, args=args, kw=kw))
+                #self.mgr.onEventCalled(self, evt, *args, **kw)
+            elif self.mgr:
+                print('Evento no controlado ' + str(evt))
+        except Exception as e:
+            print("Error capturado en evento '%s':'%s'" % (evt, e),
+                  file=sys.stderr)
+
+    def _call_event(self, evt, *args, **kw):
+        try:
+            if self.mgr and hasattr(self.mgr, evt):
+                getattr(self.mgr, evt)(*args, **kw)
                 self.mgr.on_event_called(Struct(room=self, evt = evt, args=args, kw=kw))
                 #self.mgr.onEventCalled(self, evt, *args, **kw)
             elif self.mgr:
@@ -3183,7 +3192,8 @@ class Room(CHConnection):
         """
         self._reload()
         if self.attempts <= 1:
-            self._callEvent("onConnect")
+            self._call_event("on_connect", Struct(
+                _name='Connection Context', room=self, user=self.user))
         else:
             self._callEvent("onReconnect")
         self._connectattempts = 1
@@ -3392,7 +3402,7 @@ class Room(CHConnection):
                 self._mods[msg.user] = self._parseFlags('0', ModFlags)
                 self._mods[msg.user].isadmin = False
             msg.user.history = msg
-            self._callEvent("on_message", Struct(
+            self._call_event("on_message", Struct(
                 _name='Message Context', room=self, user=msg.user, message=msg))
 
     def _rcmd_ubw(self, args):  # TODO palabas desbaneadas ?)
@@ -3987,6 +3997,14 @@ class Gestor:
     def onMessage(self, room: Room, user: User, message: Message):
         print("ONMESSAGE EXISTE WEY")
         pass
+
+    @deprecated(old_one='onConnect')
+    def on_connect(self, context):
+        """
+        Al conectarse a una sala
+        @param room:Sala a la que se ha conectado
+        """
+        self.onConnect(context.room)
 
     @deprecated(old_one='onEventCalled')
     def on_event_called(self, context):
